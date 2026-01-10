@@ -49,6 +49,8 @@ BencodeNode *parseString(FILE *torrentFile, bool *isSuccess);
 
 BencodeNode *parseInt(FILE *torrentFile, bool *isSuccess);
 
+void freeBencodeNode(BencodeNode* node);
+
 bool isDigit(const int ch) {
     return ch >= 48 && ch <= 57;
 }
@@ -155,7 +157,10 @@ BencodeNode *parseList(FILE *const torrentFile, bool *isSuccess) {
     while ((ch = fpeek(torrentFile)) != EOF && ch != 'e') {
         BencodeNode *item = parseCollectionValue(torrentFile, isSuccess);
 
-        if (!*isSuccess) return NULL;
+        if (!*isSuccess) {
+            freeBencodeNode(node);
+            return NULL;
+        }
 
         if (node->list.length + 1 > node->list.capacity) {
             const size_t newCapacity = node->list.length + DEFAULT_COLLECTION_ITEMS;
@@ -205,10 +210,18 @@ BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
             return NULL;
         }
 
-        const BencodeNode *key = parseString(torrentFile, isSuccess);
+        BencodeNode *key = parseString(torrentFile, isSuccess);
+        if (!*isSuccess) {
+            free(key);
+            return NULL;
+        }
         BencodeNode *value = parseCollectionValue(torrentFile, isSuccess);
 
-        if (!*isSuccess) return NULL;
+        if (!*isSuccess) {
+            freeBencodeNode(key);
+            freeBencodeNode(value);
+            return NULL;
+        }
 
         node->dict.length++;
         if (node->dict.length > node->dict.capacity) {
@@ -218,8 +231,9 @@ BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
             node->dict.values = realloc(node->dict.values, sizeof(BencodeNode *) * newCapacity);
         }
 
-        node->dict.keys[node->dict.length - 1] = strndup((char *) key->string.data, key->string.length);
+        node->dict.keys[node->dict.length - 1] = (char*)key->string.data;
         node->dict.values[node->dict.length - 1] = value;
+        free(key);
     }
 
     if (ch == EOF) {
@@ -230,15 +244,44 @@ BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
     return node;
 }
 
+void freeBencodeNode(BencodeNode* node) {
+    if (node == NULL) return;
+
+    switch (node->type) {
+        case BEN_INT:
+            break;
+        case BEN_STR:
+            if (node->string.data != NULL) {
+                free(node->string.data);
+            }
+            break;
+        case BEN_LIST:
+            for (size_t i = 0; i < node->list.length; i++) {
+                freeBencodeNode(node->list.items[i]);
+            }
+            free(node->list.items);
+            break;
+        case BEN_DICT:
+            for (size_t i = 0; i < node->dict.length; i++) {
+                free(node->dict.keys[i]);
+                freeBencodeNode(node->dict.values[i]);
+            }
+            free(node->dict.keys);
+            free(node->dict.values);
+    }
+
+    free(node);
+}
+
 int main() {
-    FILE *torrentFile = fopen("./../sometorrent.torrent", "r");
+    FILE *torrentFile = fopen("./../sometorrent.torrent", "rb");
 
     if (torrentFile == NULL) {
         exit(-1);
     }
 
 
-    int ch = fgetc(torrentFile);
+    const int ch = fgetc(torrentFile);
     if (ch == EOF) {
         fclose(torrentFile);
         exit(-1);
@@ -257,7 +300,7 @@ int main() {
         return -1;
     }
 
+    freeBencodeNode(root);
     fclose(torrentFile);
-    free(root);
     return 0;
 }
