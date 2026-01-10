@@ -3,47 +3,51 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define COLUMN_CHAR 58 // :
-#define DICT_CHAR 100 // d
-#define END_CHAR 101 // e
-#define INT_CHAR 105 // i
-#define LIST_CHAR 108 // l
+#define DIGITS_IN_LONG 18
+#define DEFAULT_COLLECTION_ITEMS 3
 
-#define DIGITS_IN_LONG 19
+typedef enum {
+    BEN_INT,
+    BEN_STR,
+    BEN_LIST,
+    BEN_DICT
+} BencodeType;
 
-typedef struct {
-    const char *key;
-    const char *value;
-} DictionaryItem;
+typedef struct BencodeNode BencodeNode;
 
-const DictionaryItem BencodeSymbols[] = {
-    {"d", "e"}
+struct BencodeNode {
+    BencodeType type;
+
+    union {
+        long intValue;
+
+        struct {
+            unsigned char *data;
+            size_t length;
+        } string;
+
+        struct {
+            BencodeNode **items;
+            size_t length;
+            size_t capacity;
+        } list;
+
+        struct {
+            char **keys;
+            BencodeNode **values;
+            size_t length;
+            size_t capacity;
+        } dict;
+    };
 };
 
-const char *bencodeSymbols[] = {"d", "l"};
+BencodeNode *parseList(FILE *torrentFile, bool *isSuccess);
 
-char getAsciiCharFromBinary(const char *const str) {
-    int multiplier = 1;
+BencodeNode *parseDict(FILE *torrentFile, bool *isSuccess);
 
-    return (char) str[0];
-}
+BencodeNode *parseString(FILE *torrentFile, bool *isSuccess);
 
-typedef struct TorrentInfo {
-    char *fileName;
-    int fileSize;
-} TorrentInfo;
-
-
-struct Torrent {
-    char *announce;
-    char **announceList;
-    int announceListSize;
-
-    char *comment;
-    char *createdBy;
-    int creationDateTimestamp;
-    TorrentInfo infos[];
-} Torrent;
+BencodeNode *parseInt(FILE *torrentFile, bool *isSuccess);
 
 bool isDigit(const int ch) {
     return ch >= 48 && ch <= 57;
@@ -59,13 +63,14 @@ int fpeek(FILE *const fp) {
 
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
-void getNumberFromTorrentFile(int* ch, FILE *const torrentFile, bool *isSuccess, long* number) {
+void extractNumber(FILE *const torrentFile, bool *isSuccess, long *resultNumber) {
     char numbersBuffer[DIGITS_IN_LONG + 1];
-    int position = 0;
-    numbersBuffer[position++] = (char) *ch;
-    while ((*ch = fgetc(torrentFile)) != EOF && isDigit(*ch) && position < DIGITS_IN_LONG) {
-        numbersBuffer[position++] = (char) *ch;
+    int ch, position = 0;
+    while ((ch = fgetc(torrentFile)) != EOF && isDigit(ch) && position < DIGITS_IN_LONG) {
+        numbersBuffer[position++] = (char) ch;
     }
+
+    ungetc(ch, torrentFile);
 
     numbersBuffer[position] = '\0';
 
@@ -73,94 +78,156 @@ void getNumberFromTorrentFile(int* ch, FILE *const torrentFile, bool *isSuccess,
         *isSuccess = false;
         return;
     }
-
-    *number = strtol(numbersBuffer, NULL, 10);
+    *resultNumber = strtol(numbersBuffer, NULL, 10);
 }
 
-void handleDigit(int *ch, FILE *const torrentFile, bool *isSuccess) {
+BencodeNode *parseString(FILE *const torrentFile, bool *isSuccess) {
     long charsToRead;
-    getNumberFromTorrentFile(ch, torrentFile, isSuccess, &charsToRead);
-
-    if (!*isSuccess) {
-        return;
-    }
-    if (*ch != COLUMN_CHAR) {
-        *isSuccess = false;
-        return;
+    extractNumber(torrentFile, isSuccess, &charsToRead);
+    const int nextChar = getc(torrentFile);
+    if (!*isSuccess || nextChar != ':') {
+        return NULL;
     }
 
-    char stringBuffer[charsToRead + 1];
-    fread(stringBuffer, sizeof(char), charsToRead, torrentFile);
-    stringBuffer[charsToRead] = '\0';
-    printf("\nReading %ld chars \n", charsToRead);
-    printf("%s", stringBuffer);
+    BencodeNode *node = malloc(sizeof(BencodeNode));
+    node->type = BEN_STR;
+    node->string.length = charsToRead;
+    node->string.data = malloc(charsToRead);
+
+    fread(node->string.data, sizeof(char), charsToRead, torrentFile);
+    return node;
 }
 
-void handleInt(int *ch, FILE *const torrentFile, bool *isSuccess) {
+BencodeNode *parseInt(FILE *const torrentFile, bool *isSuccess) {
+    BencodeNode *node = malloc(sizeof(BencodeNode));
+    node->type = BEN_INT;
+
     long parsedNumber;
-    getNumberFromTorrentFile(ch, torrentFile, isSuccess, &parsedNumber);
-    printf("\n%ld\n", parsedNumber);
-}
-
-void handleList(int *ch, FILE *const torrentFile, bool *isSuccess) {
-    while ((*ch = fgetc(torrentFile)) != EOF && *ch != END_CHAR) {
-        if (isDigit(*ch)) {
-            handleDigit(ch, torrentFile, isSuccess);
-            if (!*isSuccess) {
-                return;
-            }
-        } else if (*ch == DICT_CHAR) {
-            printf("OHHHHHHH DICT IN LIST");
-            // handleDict(ch, torrentFile, isSuccess);
-            // if (!*isSuccess) {
-            //     return;
-            // }
-        } else if (*ch == INT_CHAR) {
-            handleInt(ch, torrentFile, isSuccess);
-            if (!*isSuccess) {
-                return;
-            }
-        } else if (*ch == LIST_CHAR) {
-            handleList(ch, torrentFile, isSuccess);
-        } else {
-            *isSuccess = false;
-            return;
-        }
-    }
-
-    if (*ch == EOF) {
+    extractNumber(torrentFile, isSuccess, &parsedNumber);
+    node->intValue = parsedNumber;
+    if (getc(torrentFile) != 'e') {
         *isSuccess = false;
     }
+    return node;
 }
 
-void handleDict(int *ch, FILE *const torrentFile, bool *isSuccess) {
-    while ((*ch = fgetc(torrentFile)) != EOF && *ch != END_CHAR) {
-        if (isDigit(*ch)) {
-            handleDigit(ch, torrentFile, isSuccess);
-            if (!*isSuccess) {
-                return;
+BencodeNode *parseCollectionValue(FILE *const torrentFile, bool *isSuccess) {
+    const int ch = getc(torrentFile);
+    switch (ch) {
+        case 'l':
+            return parseList(torrentFile, isSuccess);
+        case 'd':
+            return parseDict(torrentFile, isSuccess);
+        case 'i':
+            return parseInt(torrentFile, isSuccess);
+        default:
+            if (isDigit(ch)) {
+                ungetc(ch, torrentFile);
+                return parseString(torrentFile, isSuccess);
             }
-        } else if (*ch == DICT_CHAR) {
-            handleDict(ch, torrentFile, isSuccess);
-            if (!*isSuccess) {
-                return;
-            }
-        } else if (*ch == INT_CHAR) {
-            handleInt(ch, torrentFile, isSuccess);
-            if (!*isSuccess) {
-                return;
-            }
-        } else if (*ch == LIST_CHAR) {
-            handleList(ch, torrentFile, isSuccess);
-        } else {
-            *isSuccess = false;
-            return;
-        }
+    }
+    return NULL;
+}
+
+BencodeNode *parseList(FILE *const torrentFile, bool *isSuccess) {
+    const int peekedChar = fpeek(torrentFile);
+    if (peekedChar == EOF) {
+        *isSuccess = false;
+        fgetc(torrentFile);
+        return NULL;
     }
 
-    if (*ch == EOF) {
+    BencodeNode *node = malloc(sizeof(BencodeNode));
+    node->type = BEN_LIST;
+    node->list.length = 0;
+    node->list.capacity = 0;
+
+    if (peekedChar == 'e') {
+        node->list.items = NULL;
+        fgetc(torrentFile);
+        return node;
+    }
+
+    node->list.items = malloc(sizeof(BencodeNode *) * DEFAULT_COLLECTION_ITEMS);
+    node->list.capacity = DEFAULT_COLLECTION_ITEMS;
+
+    int ch;
+    while ((ch = fpeek(torrentFile)) != EOF && ch != 'e') {
+        BencodeNode *item = parseCollectionValue(torrentFile, isSuccess);
+
+        if (!*isSuccess) return NULL;
+
+        if (node->list.length + 1 > node->list.capacity) {
+            const size_t newCapacity = node->list.length + DEFAULT_COLLECTION_ITEMS;
+            node->list.capacity = newCapacity;
+            node->list.items = realloc(node->list.items, sizeof(BencodeNode *) * newCapacity);
+        }
+
+        node->list.items[node->list.length++] = item;
+    }
+
+    if (ch == EOF) {
         *isSuccess = false;
     }
+    fgetc(torrentFile);
+
+    return node;
+}
+
+BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
+    const int peekedChar = fpeek(torrentFile);
+    if (peekedChar == EOF) {
+        *isSuccess = false;
+        fgetc(torrentFile);
+        return NULL;
+    }
+
+    BencodeNode *node = malloc(sizeof(BencodeNode));
+    node->type = BEN_DICT;
+    node->dict.length = 0;
+    node->dict.capacity = 0;
+
+    if (peekedChar == 'e') {
+        node->dict.keys = NULL;
+        node->dict.values = NULL;
+        fgetc(torrentFile);
+        return node;
+    }
+
+    node->dict.keys = malloc(sizeof(char *) * DEFAULT_COLLECTION_ITEMS);
+    node->dict.values = malloc(sizeof(BencodeNode *) * DEFAULT_COLLECTION_ITEMS);
+    node->dict.capacity = DEFAULT_COLLECTION_ITEMS;
+
+    int ch;
+    while ((ch = fpeek(torrentFile)) != EOF && ch != 'e') {
+        if (!isDigit(ch)) {
+            *isSuccess = false;
+            return NULL;
+        }
+
+        const BencodeNode *key = parseString(torrentFile, isSuccess);
+        BencodeNode *value = parseCollectionValue(torrentFile, isSuccess);
+
+        if (!*isSuccess) return NULL;
+
+        node->dict.length++;
+        if (node->dict.length > node->dict.capacity) {
+            const size_t newCapacity = node->dict.capacity + DEFAULT_COLLECTION_ITEMS;
+            node->dict.capacity = newCapacity;
+            node->dict.keys = realloc(node->dict.keys, sizeof(char *) * newCapacity);
+            node->dict.values = realloc(node->dict.values, sizeof(BencodeNode *) * newCapacity);
+        }
+
+        node->dict.keys[node->dict.length - 1] = strndup((char *) key->string.data, key->string.length);
+        node->dict.values[node->dict.length - 1] = value;
+    }
+
+    if (ch == EOF) {
+        *isSuccess = false;
+    }
+    fgetc(torrentFile);
+
+    return node;
 }
 
 int main() {
@@ -177,20 +244,20 @@ int main() {
         exit(-1);
     }
 
-    if (ch != DICT_CHAR) {
+    if (ch != 'd') {
         fclose(torrentFile);
         exit(-1);
     }
 
     bool isSuccess = true;
-    handleDict(&ch, torrentFile, &isSuccess);
+    BencodeNode *root = parseDict(torrentFile, &isSuccess);
     if (!isSuccess) {
-        return -1;
-    }
-    if (ch == EOF) {
         fclose(torrentFile);
-        exit(-1); // TODO: Error: dictionary was not closed by e
+        free(root);
+        return -1;
     }
 
     fclose(torrentFile);
+    free(root);
+    return 0;
 }
