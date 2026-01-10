@@ -66,20 +66,28 @@ int fpeek(FILE *const fp) {
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
 void extractNumber(FILE *const torrentFile, bool *isSuccess, long *resultNumber) {
-    char numbersBuffer[DIGITS_IN_LONG + 1];
-    int ch, position = 0;
+    char numbersBuffer[DIGITS_IN_LONG + 2];
+    int position = 0;
+
+    int ch = fgetc(torrentFile);
+    if (ch == '-') {
+        numbersBuffer[position++] = '-';
+    } else {
+        ungetc(ch, torrentFile);
+    }
+
     while ((ch = fgetc(torrentFile)) != EOF && isDigit(ch) && position < DIGITS_IN_LONG) {
         numbersBuffer[position++] = (char) ch;
     }
 
     ungetc(ch, torrentFile);
-
     numbersBuffer[position] = '\0';
 
-    if (position > DIGITS_IN_LONG) {
+    if (position == 0 || (position == 1 && numbersBuffer[0] == '-')) {
         *isSuccess = false;
         return;
     }
+
     *resultNumber = strtol(numbersBuffer, NULL, 10);
 }
 
@@ -296,7 +304,7 @@ int main() {
     BencodeNode *root = parseDict(torrentFile, &isSuccess);
     if (!isSuccess) {
         fclose(torrentFile);
-        free(root);
+        freeBencodeNode(root);
         return -1;
     }
 
