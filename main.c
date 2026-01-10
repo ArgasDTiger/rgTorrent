@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 #define DIGITS_IN_LONG 18
 #define DEFAULT_COLLECTION_ITEMS 3
@@ -41,15 +42,26 @@ struct BencodeNode {
     };
 };
 
-BencodeNode *parseList(FILE *torrentFile, bool *isSuccess);
+typedef struct {
+    FILE *file;
+    bool hasError;
+    char errorMsg[256];
+    long errorPosition;
+} BencodeContext;
 
-BencodeNode *parseDict(FILE *torrentFile, bool *isSuccess);
+BencodeNode *parseList(BencodeContext *ctx);
 
-BencodeNode *parseString(FILE *torrentFile, bool *isSuccess);
+BencodeNode *parseDict(BencodeContext *ctx);
 
-BencodeNode *parseInt(FILE *torrentFile, bool *isSuccess);
+BencodeNode *parseString(BencodeContext *ctx);
 
-void freeBencodeNode(BencodeNode* node);
+BencodeNode *parseInt(BencodeContext *ctx);
+
+BencodeNode *parseCollectionValue(BencodeContext *ctx);
+
+void freeBencodeNode(BencodeNode *node);
+
+void reportError(BencodeContext *ctx, const char *format, ...);
 
 bool isDigit(const int ch) {
     return ch >= 48 && ch <= 57;
@@ -65,85 +77,43 @@ int fpeek(FILE *const fp) {
 
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
-void extractNumber(FILE *const torrentFile, bool *isSuccess, long *resultNumber) {
+void extractNumber(BencodeContext *ctx, long *resultNumber) {
     char numbersBuffer[DIGITS_IN_LONG + 2];
     int position = 0;
 
-    int ch = fgetc(torrentFile);
+    int ch = fgetc(ctx->file);
     if (ch == '-') {
         numbersBuffer[position++] = '-';
     } else {
-        ungetc(ch, torrentFile);
+        ungetc(ch, ctx->file);
     }
 
-    while ((ch = fgetc(torrentFile)) != EOF && isDigit(ch) && position < DIGITS_IN_LONG) {
+    while ((ch = fgetc(ctx->file)) != EOF && isDigit(ch)) {
+        if (position >= DIGITS_IN_LONG) {
+            reportError(ctx, "Encountered number exceeds max digits number (%d).", DIGITS_IN_LONG);
+            return;
+        }
         numbersBuffer[position++] = (char) ch;
     }
 
-    ungetc(ch, torrentFile);
+    ungetc(ch, ctx->file);
     numbersBuffer[position] = '\0';
 
     if (position == 0 || (position == 1 && numbersBuffer[0] == '-')) {
-        *isSuccess = false;
+        reportError(ctx, "Expected a number, found '%c' (0x%02X).", ch, ch);
         return;
     }
 
     *resultNumber = strtol(numbersBuffer, NULL, 10);
 }
 
-BencodeNode *parseString(FILE *const torrentFile, bool *isSuccess) {
-    long charsToRead;
-    extractNumber(torrentFile, isSuccess, &charsToRead);
-    const int nextChar = getc(torrentFile);
-    if (!*isSuccess || nextChar != ':') {
-        return NULL;
-    }
+BencodeNode *parseList(BencodeContext *ctx) {
+    if (ctx->hasError) return NULL;
 
-    BencodeNode *node = malloc(sizeof(BencodeNode));
-    node->type = BEN_STR;
-    node->string.length = charsToRead;
-    node->string.data = malloc(charsToRead);
-
-    fread(node->string.data, sizeof(char), charsToRead, torrentFile);
-    return node;
-}
-
-BencodeNode *parseInt(FILE *const torrentFile, bool *isSuccess) {
-    BencodeNode *node = malloc(sizeof(BencodeNode));
-    node->type = BEN_INT;
-
-    long parsedNumber;
-    extractNumber(torrentFile, isSuccess, &parsedNumber);
-    node->intValue = parsedNumber;
-    if (getc(torrentFile) != 'e') {
-        *isSuccess = false;
-    }
-    return node;
-}
-
-BencodeNode *parseCollectionValue(FILE *const torrentFile, bool *isSuccess) {
-    const int ch = getc(torrentFile);
-    switch (ch) {
-        case 'l':
-            return parseList(torrentFile, isSuccess);
-        case 'd':
-            return parseDict(torrentFile, isSuccess);
-        case 'i':
-            return parseInt(torrentFile, isSuccess);
-        default:
-            if (isDigit(ch)) {
-                ungetc(ch, torrentFile);
-                return parseString(torrentFile, isSuccess);
-            }
-    }
-    return NULL;
-}
-
-BencodeNode *parseList(FILE *const torrentFile, bool *isSuccess) {
-    const int peekedChar = fpeek(torrentFile);
+    const int peekedChar = fpeek(ctx->file);
     if (peekedChar == EOF) {
-        *isSuccess = false;
-        fgetc(torrentFile);
+        reportError(ctx, "Unexpected EOF while parsing the list.");
+        fgetc(ctx->file);
         return NULL;
     }
 
@@ -154,7 +124,7 @@ BencodeNode *parseList(FILE *const torrentFile, bool *isSuccess) {
 
     if (peekedChar == 'e') {
         node->list.items = NULL;
-        fgetc(torrentFile);
+        fgetc(ctx->file);
         return node;
     }
 
@@ -162,36 +132,38 @@ BencodeNode *parseList(FILE *const torrentFile, bool *isSuccess) {
     node->list.capacity = DEFAULT_COLLECTION_ITEMS;
 
     int ch;
-    while ((ch = fpeek(torrentFile)) != EOF && ch != 'e') {
-        BencodeNode *item = parseCollectionValue(torrentFile, isSuccess);
+    while ((ch = fpeek(ctx->file)) != EOF && ch != 'e') {
+        BencodeNode *item = parseCollectionValue(ctx);
 
-        if (!*isSuccess) {
+        if (ctx->hasError) {
             freeBencodeNode(node);
             return NULL;
         }
-
-        if (node->list.length + 1 > node->list.capacity) {
-            const size_t newCapacity = node->list.length + DEFAULT_COLLECTION_ITEMS;
-            node->list.capacity = newCapacity;
-            node->list.items = realloc(node->list.items, sizeof(BencodeNode *) * newCapacity);
+        if (node->list.length >= node->list.capacity) {
+            node->list.capacity *= 2;
+            node->list.items = realloc(node->list.items, sizeof(BencodeNode *) * node->list.capacity);
         }
-
         node->list.items[node->list.length++] = item;
     }
 
     if (ch == EOF) {
-        *isSuccess = false;
+        freeBencodeNode(node);
+        reportError(ctx, "Unexpected EOF while parsing the list.");
+        return NULL;
     }
-    fgetc(torrentFile);
+
+    fgetc(ctx->file);
 
     return node;
 }
 
-BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
-    const int peekedChar = fpeek(torrentFile);
+BencodeNode *parseDict(BencodeContext *ctx) {
+    if (ctx->hasError) return NULL;
+
+    const int peekedChar = fpeek(ctx->file);
     if (peekedChar == EOF) {
-        *isSuccess = false;
-        fgetc(torrentFile);
+        reportError(ctx, "Unexpected EOF while parsing the dict.");
+        fgetc(ctx->file);
         return NULL;
     }
 
@@ -203,7 +175,7 @@ BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
     if (peekedChar == 'e') {
         node->dict.keys = NULL;
         node->dict.values = NULL;
-        fgetc(torrentFile);
+        fgetc(ctx->file);
         return node;
     }
 
@@ -212,20 +184,20 @@ BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
     node->dict.capacity = DEFAULT_COLLECTION_ITEMS;
 
     int ch;
-    while ((ch = fpeek(torrentFile)) != EOF && ch != 'e') {
+    while ((ch = fpeek(ctx->file)) != EOF && ch != 'e') {
         if (!isDigit(ch)) {
-            *isSuccess = false;
+            reportError(ctx, "Expected digit while parsing key of the dictionary, encountered: %c.", ch);
             return NULL;
         }
 
-        BencodeNode *key = parseString(torrentFile, isSuccess);
-        if (!*isSuccess) {
+        BencodeNode *key = parseString(ctx);
+        if (ctx->hasError) {
             free(key);
             return NULL;
         }
-        BencodeNode *value = parseCollectionValue(torrentFile, isSuccess);
+        BencodeNode *value = parseCollectionValue(ctx);
 
-        if (!*isSuccess) {
+        if (ctx->hasError) {
             freeBencodeNode(key);
             freeBencodeNode(value);
             return NULL;
@@ -239,20 +211,82 @@ BencodeNode *parseDict(FILE *const torrentFile, bool *isSuccess) {
             node->dict.values = realloc(node->dict.values, sizeof(BencodeNode *) * newCapacity);
         }
 
-        node->dict.keys[node->dict.length - 1] = (char*)key->string.data;
+        node->dict.keys[node->dict.length - 1] = (char *) key->string.data;
         node->dict.values[node->dict.length - 1] = value;
         free(key);
     }
 
     if (ch == EOF) {
-        *isSuccess = false;
+        reportError(ctx, "Unexpected EOF while parsing the dict.");
     }
-    fgetc(torrentFile);
+    fgetc(ctx->file);
 
     return node;
 }
 
-void freeBencodeNode(BencodeNode* node) {
+BencodeNode *parseString(BencodeContext *ctx) {
+    if (ctx->hasError) return NULL;
+
+    long charsToRead;
+    extractNumber(ctx, &charsToRead);
+    if (ctx->hasError) return NULL;
+    // todo: handle negative numbers
+
+    const int nextChar = fgetc(ctx->file);
+    if (nextChar != ':') {
+        reportError(ctx, "Expected ':' after string length, found '%c'.", nextChar);
+        return NULL;
+    }
+
+    BencodeNode *node = malloc(sizeof(BencodeNode));
+    node->type = BEN_STR;
+    node->string.length = charsToRead;
+    node->string.data = malloc(charsToRead);
+
+    size_t readLength = fread(node->string.data, 1, charsToRead, ctx->file);
+    if (readLength != charsToRead) {
+        freeBencodeNode(node);
+        reportError(ctx, "Unexpected EOF reading string data. Expected %ld, got %ld.", charsToRead, readLength);
+        return NULL;
+    }
+    return node;
+}
+
+BencodeNode *parseInt(BencodeContext *ctx) {
+    if (ctx->hasError) return NULL;
+
+    BencodeNode *node = malloc(sizeof(BencodeNode));
+    node->type = BEN_INT;
+
+    long parsedNumber;
+    extractNumber(ctx, &parsedNumber);
+    node->intValue = parsedNumber;
+    const int ch = getc(ctx->file);
+    if (ch != 'e') {
+        reportError(ctx, "Encountered '%c' instead of expected 'e' while parsing int.", ch);
+    }
+    return node;
+}
+
+BencodeNode *parseCollectionValue(BencodeContext *ctx) {
+    const int ch = getc(ctx->file);
+    switch (ch) {
+        case 'l':
+            return parseList(ctx);
+        case 'd':
+            return parseDict(ctx);
+        case 'i':
+            return parseInt(ctx);
+        default:
+            if (isDigit(ch)) {
+                ungetc(ch, ctx->file);
+                return parseString(ctx);
+            }
+    }
+    return NULL;
+}
+
+void freeBencodeNode(BencodeNode *node) {
     if (node == NULL) return;
 
     switch (node->type) {
@@ -281,34 +315,55 @@ void freeBencodeNode(BencodeNode* node) {
     free(node);
 }
 
+void reportError(BencodeContext *ctx, const char *format, ...) {
+    ctx->hasError = true;
+    ctx->errorPosition = ftell(ctx->file);
+
+    va_list args;
+    va_start(args, format);
+    vsnprintf(ctx->errorMsg, sizeof(ctx->errorMsg), format, args);
+    va_end(args);
+}
+
 int main() {
-    FILE *torrentFile = fopen("./../sometorrent.torrent", "rb");
+    char *fileName = "./../sometorrent.torrent";
+    BencodeContext ctx;
+    ctx.file = fopen(fileName, "rb");
+    ctx.hasError = false;
+    ctx.errorPosition = 0;
+    memset(ctx.errorMsg, 0, sizeof(ctx.errorMsg));
 
-    if (torrentFile == NULL) {
-        exit(-1);
+    if (!ctx.file) {
+        perror("Error opening file");
+        return 1;
     }
 
-
-    const int ch = fgetc(torrentFile);
+    const int ch = fpeek(ctx.file);
     if (ch == EOF) {
-        fclose(torrentFile);
-        exit(-1);
+        perror("File is empty.");
+        return 1;
     }
 
-    if (ch != 'd') {
-        fclose(torrentFile);
-        exit(-1);
+    BencodeNode *root = NULL;
+
+    if (ch == 'd') {
+        fgetc(ctx.file);
+        root = parseDict(&ctx);
+    } else {
+        reportError(&ctx, "File does not start with a dictionary (found '%c' instead).", ch);
     }
 
-    bool isSuccess = true;
-    BencodeNode *root = parseDict(torrentFile, &isSuccess);
-    if (!isSuccess) {
-        fclose(torrentFile);
+    if (ctx.hasError) {
+        printf("Error: %s\n", ctx.errorMsg);
+        printf("Position: %ld (0x%lX)\n", ctx.errorPosition, ctx.errorPosition);
+
+        if (root) {
+            freeBencodeNode(root);
+        }
+    } else {
         freeBencodeNode(root);
-        return -1;
     }
 
-    freeBencodeNode(root);
-    fclose(torrentFile);
+    fclose(ctx.file);
     return 0;
 }
