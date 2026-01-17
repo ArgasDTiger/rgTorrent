@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <openssl/sha.h>
 
 #define DIGITS_IN_LONG 18
 #define DEFAULT_COLLECTION_ITEMS 3
@@ -18,6 +19,8 @@ typedef struct BencodeNode BencodeNode;
 
 struct BencodeNode {
     BencodeType type;
+    long startOffset;
+    long endOffset;
 
     union {
         long intValue;
@@ -269,21 +272,32 @@ BencodeNode *parseInt(BencodeContext *ctx) {
 }
 
 BencodeNode *parseCollectionValue(BencodeContext *ctx) {
+    const long startPosition = ftell(ctx->file);
+
     const int ch = getc(ctx->file);
+    BencodeNode *node = NULL;
     switch (ch) {
         case 'l':
-            return parseList(ctx);
+            node = parseList(ctx);
+            break;
         case 'd':
-            return parseDict(ctx);
+            node = parseDict(ctx);
+            break;
         case 'i':
-            return parseInt(ctx);
+            node = parseInt(ctx);
+            break;
         default:
             if (isDigit(ch)) {
                 ungetc(ch, ctx->file);
-                return parseString(ctx);
+                node = parseString(ctx);
             }
     }
-    return NULL;
+
+    if (node) {
+        node->startOffset = startPosition;
+        node->endOffset = ftell(ctx->file);
+    }
+    return node;
 }
 
 void freeBencodeNode(BencodeNode *node) {
@@ -325,6 +339,20 @@ void reportError(BencodeContext *ctx, const char *format, ...) {
     va_end(args);
 }
 
+BencodeNode *getDictValue(const BencodeNode *dict, const char *key) {
+    if (dict == NULL || dict->type != BEN_DICT) {
+        // TODO: log an error
+        return NULL;
+    };
+
+    for (size_t i = 0; i < dict->dict.length; i++) {
+        if (strcmp(dict->dict.keys[i], key) == 0) {
+            return dict->dict.values[i];
+        }
+    }
+    return NULL;
+}
+
 int main() {
     char *fileName = "./../sometorrent.torrent";
     BencodeContext ctx;
@@ -360,10 +388,32 @@ int main() {
         if (root) {
             freeBencodeNode(root);
         }
-    } else {
-        freeBencodeNode(root);
     }
 
+    if (!root) {
+        printf("Failed to extract content of .torrent file.");
+        fclose(ctx.file);
+        return 0;
+    }
+
+    BencodeNode* infoNode = getDictValue(root, "info");
+    if (!infoNode) {
+        printf("Failed to extract value of \"info\" from the file.");
+        return 0;
+    }
+
+    const long infoLength = infoNode->endOffset - infoNode->startOffset;
+    char* infoContent = malloc(infoLength);
+    fseek(ctx.file, infoNode->startOffset, SEEK_SET);
+    fread(infoContent, infoLength, 1, ctx.file);
+
+    printf("Content: \n%s\n", infoContent);
+
+    unsigned char hash[SHA_DIGEST_LENGTH];
+    SHA1(infoContent, infoLength, hash);
+
+    free(infoContent);
+    freeBencodeNode(root);
     fclose(ctx.file);
     return 0;
 }
