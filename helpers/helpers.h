@@ -6,4 +6,6 @@
 bool isDigit(int ch);
 
 int fpeek(FILE *fp);
+
+void rand_str(unsigned char *dest, size_t length);
 #endif

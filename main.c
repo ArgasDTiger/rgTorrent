@@ -6,6 +6,7 @@
 #include "bencoder.h"
 #include "bencode_parser.h"
 #include "helpers.h"
+#include "announce_connector.h"
 
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
@@ -65,9 +66,30 @@ int main() {
 
     printf("Content: \n%s\n", infoContent);
 
-    unsigned char hash[SHA_DIGEST_LENGTH];
-    SHA1(infoContent, infoLength, hash);
+    unsigned char info_hash[SHA_DIGEST_LENGTH];
+    SHA1(infoContent, infoLength, info_hash);
 
+    BencodeNode* announce_node = getDictValue(root, "announce");
+
+    if (!announce_node || announce_node->type != BEN_STR || announce_node->string.length == 0) {
+        printf("Invalid \"announce\".");
+        return 0;
+    }
+
+    unsigned char peer_id[20];
+    rand_str(peer_id, 20);
+
+    UdpAnnounceRequest announce_data;
+    announce_data.announce_address = announce_node->string.data;
+    announce_data.info_hash = info_hash;
+    announce_data.peer_id = peer_id;
+    // announce_data.ip = ;
+    announce_data.port = DEFAULT_ANNOUNCE_PORT;
+    announce_data.uploaded = 0;
+    announce_data.downloaded = 0;
+
+
+    get_peers_list(&announce_data);
     free(infoContent);
     freeBencodeNode(root);
     fclose(ctx.file);
