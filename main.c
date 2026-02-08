@@ -11,7 +11,7 @@
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
 int main() {
-    const char *fileName = "./../sometorrent.torrent";
+    const char *fileName = "./../Fedora-Budgie-Live-x86_64-43.torrent";
     BencodeContext ctx;
     ctx.file = fopen(fileName, "rb");
     ctx.hasError = false;
