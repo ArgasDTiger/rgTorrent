@@ -40,6 +40,12 @@ void extractNumber(BencodeContext *ctx, long *resultNumber) {
 BencodeNode *parseList(BencodeContext *ctx) {
     if (ctx->hasError) return NULL;
 
+    int ch = fgetc(ctx->file);
+    if (ch != 'l') {
+        reportError(ctx, "Expected 'l' at start of list, found '%c'.", ch);
+        return NULL;
+    }
+
     const int peekedChar = fpeek(ctx->file);
     if (peekedChar == EOF) {
         reportError(ctx, "Unexpected EOF while parsing the list.");
@@ -61,7 +67,6 @@ BencodeNode *parseList(BencodeContext *ctx) {
     node->list.items = malloc(sizeof(BencodeNode *) * DEFAULT_COLLECTION_ITEMS);
     node->list.capacity = DEFAULT_COLLECTION_ITEMS;
 
-    int ch;
     while ((ch = fpeek(ctx->file)) != EOF && ch != 'e') {
         BencodeNode *item = parseCollectionValue(ctx);
 
@@ -90,10 +95,9 @@ BencodeNode *parseList(BencodeContext *ctx) {
 BencodeNode *parseDict(BencodeContext *ctx) {
     if (ctx->hasError) return NULL;
 
-    const int peekedChar = fpeek(ctx->file);
-    if (peekedChar == EOF) {
-        reportError(ctx, "Unexpected EOF while parsing the dict.");
-        fgetc(ctx->file);
+    int peekedChar = fgetc(ctx->file);
+    if (peekedChar != 'd') {
+        reportError(ctx, "File does not start with a dictionary (found '%c' instead).", peekedChar);
         return NULL;
     }
 
@@ -102,6 +106,7 @@ BencodeNode *parseDict(BencodeContext *ctx) {
     node->dict.length = 0;
     node->dict.capacity = 0;
 
+    peekedChar = fpeek(ctx->file);
     if (peekedChar == 'e') {
         node->dict.keys = NULL;
         node->dict.values = NULL;
@@ -185,13 +190,19 @@ BencodeNode *parseString(BencodeContext *ctx) {
 BencodeNode *parseInt(BencodeContext *ctx) {
     if (ctx->hasError) return NULL;
 
+    int ch = fgetc(ctx->file);
+    if (ch != 'i') {
+        reportError(ctx, "Expected 'i' at start of integer, found '%c'.", ch);
+        return NULL;
+    }
+
     BencodeNode *node = malloc(sizeof(BencodeNode));
     node->type = BEN_INT;
 
     long parsedNumber;
     extractNumber(ctx, &parsedNumber);
     node->intValue = parsedNumber;
-    const int ch = getc(ctx->file);
+    ch = getc(ctx->file);
     if (ch != 'e') {
         reportError(ctx, "Encountered '%c' instead of expected 'e' while parsing int.", ch);
     }
@@ -201,7 +212,7 @@ BencodeNode *parseInt(BencodeContext *ctx) {
 BencodeNode *parseCollectionValue(BencodeContext *ctx) {
     const long startPosition = ftell(ctx->file);
 
-    const int ch = getc(ctx->file);
+    const int ch = fpeek(ctx->file);
     BencodeNode *node = NULL;
     switch (ch) {
         case 'l':
@@ -215,7 +226,6 @@ BencodeNode *parseCollectionValue(BencodeContext *ctx) {
             break;
         default:
             if (isDigit(ch)) {
-                ungetc(ch, ctx->file);
                 node = parseString(ctx);
             }
     }

@@ -1,6 +1,7 @@
 #ifndef ANNOUNCE_CONNECTOR_H
 #define ANNOUNCE_CONNECTOR_H
 #define DEFAULT_ANNOUNCE_PORT 6881;
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct {
@@ -58,5 +59,5 @@ enum NormalAnnounce{
     AnnounceResponse = 3,
 };
 
-char* get_peers_list(const UdpAnnounceRequest* announce);
+char* get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len);
 #endif // ANNOUNCE_CONNECTOR_H

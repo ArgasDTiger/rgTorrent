@@ -29,15 +29,7 @@ int main() {
         return 1;
     }
 
-    BencodeNode *root = NULL;
-
-    if (ch == 'd') {
-        fgetc(ctx.file);
-        root = parseDict(&ctx);
-    } else {
-        reportError(&ctx, "File does not start with a dictionary (found '%c' instead).", ch);
-    }
-
+    BencodeNode *root = parseDict(&ctx);
     if (ctx.hasError) {
         printf("Error: %s\n", ctx.errorMsg);
         printf("Position: %ld (0x%lX)\n", ctx.errorPosition, ctx.errorPosition);
@@ -89,7 +81,27 @@ int main() {
     announce_data.downloaded = 0;
 
 
-    get_peers_list(&announce_data);
+    size_t peers_length = 0;
+    char* peers = get_peers_list(&announce_data, &peers_length);
+    if (peers) {
+        const size_t count = peers_length / 6;
+        printf("Received %lu peers:\n", count);
+
+        for (int i = 0; i < count; i++) {
+            const unsigned char *p = peers + i * 6;
+            const int port = p[4] << 8 | p[5];
+            printf("Peer %d: %d.%d.%d.%d:%d\n",
+                   i + 1,
+                   p[0], p[1], p[2], p[3],
+                   port);
+        }
+
+        free(peers);
+    } else {
+        printf("No peers found or connection failed.\n");
+    }
+
+
     free(infoContent);
     freeBencodeNode(root);
     fclose(ctx.file);
