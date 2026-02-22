@@ -7,6 +7,7 @@
 #include "bencode_parser.h"
 #include "helpers.h"
 #include "announce_connector.h"
+#include "handshake.h"
 
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
@@ -83,25 +84,29 @@ int main() {
 
     size_t peers_length = 0;
     char* peers = get_peers_list(&announce_data, &peers_length);
-    if (peers) {
-        const size_t count = peers_length / 6;
-        printf("Received %lu peers:\n", count);
 
-        for (int i = 0; i < count; i++) {
-            const unsigned char *p = peers + i * 6;
-            const int port = p[4] << 8 | p[5];
-            printf("Peer %d: %d.%d.%d.%d:%d\n",
-                   i + 1,
-                   p[0], p[1], p[2], p[3],
-                   port);
-        }
-
-        free(peers);
-    } else {
+    if (!peers) {
         printf("No peers found or connection failed.\n");
+        free(infoContent);
+        freeBencodeNode(root);
+        fclose(ctx.file);
+        return -1;
+    }
+    const size_t count = peers_length / 6;
+    printf("Received %lu peers:\n", count);
+
+    for (int i = 0; i < count; i++) {
+        const unsigned char *p = peers + i * 6;
+        const int port = p[4] << 8 | p[5];
+        printf("Peer %d: %d.%d.%d.%d:%d\n",
+               i + 1,
+               p[0], p[1], p[2], p[3],
+               port);
     }
 
+    establish_handshake(peers, count, info_hash, peer_id);
 
+    free(peers);
     free(infoContent);
     freeBencodeNode(root);
     fclose(ctx.file);
