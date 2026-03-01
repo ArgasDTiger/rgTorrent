@@ -11,8 +11,14 @@
 #include <sys/socket.h>
 
 #define BITTORRENT_PROTOCOL_STR "BitTorrent protocol"
+#define BITFIELD 5
+
+#define UNCHOKE 1
+#define CHOKE 0
+#define INTERESTED 2
 
 bool handshake_by_address(const char* ip, int port, const PeerHandshake* handshake_to_peer);
+bool send_interested(int sockfd);
 
 void establish_handshake(const unsigned char* peers_list, const size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id) {
     if (peers_count <= 0) return;
@@ -100,7 +106,7 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
     }
 
     const uint32_t message_length = be32toh(message_length_net);
-    if (message_length <= 0) {
+    if (message_length == 0) {
         printf("Received Keep-Alive message.\n");
         close(sockfd);
         return false;
@@ -114,21 +120,72 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
         return false;
     }
 
-    printf("Received Message ID: %d (Length: %u bytes)\n", msg_id, message_length);
+    printf("Received Message ID: %d. Length of the message is %u bytes)\n", msg_id, message_length);
 
     const uint32_t payload_length = message_length - 1;
     if (payload_length > 0) {
         unsigned char *payload = malloc(payload_length);
         received = recv(sockfd, payload, payload_length, MSG_WAITALL);
 
-        if (msg_id == 5) {
+        if (msg_id == BITFIELD) {
             printf("Received a BITFIELD message.\n");
         }
 
         free(payload);
     }
 
+    const bool interested_result = send_interested(sockfd);
     close(sockfd);
-    return true;
+    return interested_result;
 }
 
+bool send_interested(const int sockfd) {
+    const uint8_t interested_msg[5] = {0, 0, 0, 1, INTERESTED};
+
+
+    if (send(sockfd, interested_msg, sizeof(interested_msg), 0) != sizeof(interested_msg)) {
+        printf("Failed to send interested message.\n");
+        return false;
+    }
+
+    printf("Waiting for peer to unchoke...");
+
+    // TODO: in this loop we are waiting only for one peer. need to wait for more, as ine peer can be choking us for a long time
+    while (true) {
+        uint32_t next_len_net;
+        if (recv(sockfd, &next_len_net, 4, MSG_WAITALL) <= 0) {
+            printf("Peer dropped connection while waiting for unchoke msg.\n");
+            break;
+        }
+
+        const uint32_t next_len = be32toh(next_len_net);
+        if (next_len == 0) {
+            printf("Received Keep-Alive msg, continue waiting...\n");
+            continue;
+        }
+
+        uint8_t next_id;
+        if (recv(sockfd, &next_id, 1, MSG_WAITALL) <= 0) {
+            break;
+        }
+
+        const uint32_t next_payload_len = next_len - 1;
+        if (next_payload_len > 0) {
+            unsigned char *temp_buffer = malloc(next_payload_len);
+            recv(sockfd, temp_buffer, next_payload_len, MSG_WAITALL);
+            free(temp_buffer);
+        }
+
+        printf("Received Message ID: %d\n", next_id);
+
+        if (next_id == UNCHOKE) {
+            printf("Peer has unchoked\n");
+            break;
+        }
+        if (next_id == CHOKE) {
+            printf("Peer is still choking. Waiting to unchoke...\n");
+        }
+    }
+
+    return true;
+}
