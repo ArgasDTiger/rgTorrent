@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include <openssl/sha.h>
 #include "bencoder.h"
 #include "bencode_parser.h"
 #include "helpers.h"
 #include "announce_connector.h"
 #include "handshake.h"
+#include "downloader.h"
 
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
@@ -104,8 +106,28 @@ int main() {
                port);
     }
 
-    establish_handshake(peers, count, info_hash, peer_id);
+    const int active_peer_sockfd = establish_handshake(peers, count, info_hash, peer_id);
 
+    if (active_peer_sockfd == -1) {
+        printf("Failed to establish a handshake.\n");
+        free(peers);
+        free(infoContent);
+        freeBencodeNode(root);
+        fclose(ctx.file);
+    }
+
+    for (int i = 0; i < 10; i++) {
+        const bool is_downloaded = download_piece(active_peer_sockfd, i);
+        if (is_downloaded) {
+            printf("Downloaded.\n");
+        }
+        else {
+            printf("Not downloaded.\n");
+        }
+    }
+
+
+    close(active_peer_sockfd);
     free(peers);
     free(infoContent);
     freeBencodeNode(root);

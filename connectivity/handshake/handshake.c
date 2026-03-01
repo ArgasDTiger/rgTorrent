@@ -17,11 +17,11 @@
 #define CHOKE 0
 #define INTERESTED 2
 
-bool handshake_by_address(const char* ip, int port, const PeerHandshake* handshake_to_peer);
+int handshake_by_address(const char* ip, int port, const PeerHandshake *handshake_to_peer);
 bool send_interested(int sockfd);
 
-void establish_handshake(const unsigned char* peers_list, const size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id) {
-    if (peers_count <= 0) return;
+int establish_handshake(const unsigned char* peers_list, const size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id) {
+    if (peers_count <= 0) return -1;
 
     PeerHandshake my_handshake;
     my_handshake.pstrlen = 19;
@@ -37,19 +37,20 @@ void establish_handshake(const unsigned char* peers_list, const size_t peers_cou
         char ip_str[16];
         snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
 
-        const bool is_success = handshake_by_address(ip_str, port, &my_handshake);
-        if (is_success) {
-            break;
+        const int active_sockfd = handshake_by_address(ip_str, port, &my_handshake);
+        if (active_sockfd != -1) {
+            return active_sockfd;
         }
     }
+    return -1;
 }
 
-bool handshake_by_address(const char* ip, const int port, const PeerHandshake *handshake_to_peer) {
+int handshake_by_address(const char* ip, const int port, const PeerHandshake *handshake_to_peer) {
     printf("Trying to establish a connection to %s:%d...\n", ip, port);
     const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         perror("Socket creation failed.");
-        return false;
+        return -1;
     }
 
     const struct timeval tv = {.tv_sec = 3, .tv_usec = 0};
@@ -63,13 +64,13 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
     if (inet_pton(AF_INET, ip, &peer_addr.sin_addr) <= 0) {
         perror("Invalid IP address.");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     if (connect(sockfd, (struct sockaddr *)&peer_addr, sizeof(peer_addr)) < 0) {
         printf("Connection failed or timed out.\n");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     printf("Connected! Sending handshake...\n");
@@ -77,7 +78,7 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
     if (send(sockfd, handshake_to_peer, sizeof(PeerHandshake), 0) != sizeof(PeerHandshake)) {
         printf("Failed to send full handshake.\n");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     PeerHandshake handshake_from_peer;
@@ -86,13 +87,13 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
     if (received < 68) {
         printf("Peer dropped connection or sent invalid handshake (got %ld bytes).\n", received);
         close(sockfd);
-        return false;
+        return -1;
     }
 
     if (memcmp(handshake_to_peer->info_hash, handshake_from_peer.info_hash, 20) != 0) {
         printf("Info hash mismatch occurred, different file was sent.\n");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     printf("Valid handshake received from %s:%d.\n", ip, port);
@@ -102,14 +103,14 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
     if (received <= 0) {
         printf("Peer dropped connection or sent invalid message length after a handshake.\n");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     const uint32_t message_length = be32toh(message_length_net);
     if (message_length == 0) {
         printf("Received Keep-Alive message.\n");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     uint8_t msg_id;
@@ -117,7 +118,7 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
     if (received <= 0) {
         printf("Failed to read message ID.\n");
         close(sockfd);
-        return false;
+        return -1;
     }
 
     printf("Received Message ID: %d. Length of the message is %u bytes)\n", msg_id, message_length);
@@ -134,9 +135,12 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
         free(payload);
     }
 
-    const bool interested_result = send_interested(sockfd);
+    if (send_interested(sockfd)) {
+        return sockfd;
+    }
+
     close(sockfd);
-    return interested_result;
+    return -1;
 }
 
 bool send_interested(const int sockfd) {

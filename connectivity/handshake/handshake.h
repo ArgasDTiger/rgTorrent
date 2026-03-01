@@ -10,5 +10,5 @@ typedef struct  {
     uint8_t peer_id[20];
 } __attribute__((packed)) PeerHandshake;
 
-void establish_handshake(const unsigned char* peers_list, size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id);
+int establish_handshake(const unsigned char* peers_list, size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id);
 #endif // HANDSHAKE_H

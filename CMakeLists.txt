@@ -9,7 +9,8 @@ find_package(uriparser REQUIRED)
 add_executable(rgTorrent main.c bencoding/bencoder.c bencoding/bencode_parser.c helpers/helpers.c
         connectivity/announce_connector.c
         helpers/request_helpers.c
-        connectivity/handshake/handshake.c)
+        connectivity/handshake/handshake.c
+        downloader/downloader.c)
 
-target_include_directories(rgTorrent PRIVATE helpers bencoding connectivity connectivity/handshake)
+target_include_directories(rgTorrent PRIVATE helpers bencoding connectivity connectivity/handshake downloader)
 target_link_libraries(rgTorrent OpenSSL::SSL OpenSSL::Crypto uriparser::uriparser)
