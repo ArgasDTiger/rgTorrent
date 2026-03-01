@@ -142,7 +142,6 @@ bool handshake_by_address(const char* ip, const int port, const PeerHandshake *h
 bool send_interested(const int sockfd) {
     const uint8_t interested_msg[5] = {0, 0, 0, 1, INTERESTED};
 
-
     if (send(sockfd, interested_msg, sizeof(interested_msg), 0) != sizeof(interested_msg)) {
         printf("Failed to send interested message.\n");
         return false;
@@ -150,23 +149,22 @@ bool send_interested(const int sockfd) {
 
     printf("Waiting for peer to unchoke...");
 
-    // TODO: in this loop we are waiting only for one peer. need to wait for more, as ine peer can be choking us for a long time
     while (true) {
         uint32_t next_len_net;
         if (recv(sockfd, &next_len_net, 4, MSG_WAITALL) <= 0) {
             printf("Peer dropped connection while waiting for unchoke msg.\n");
-            break;
+            return false;
         }
 
         const uint32_t next_len = be32toh(next_len_net);
+        // keep alive msg
         if (next_len == 0) {
-            printf("Received Keep-Alive msg, continue waiting...\n");
             continue;
         }
 
         uint8_t next_id;
         if (recv(sockfd, &next_id, 1, MSG_WAITALL) <= 0) {
-            break;
+            return false;
         }
 
         const uint32_t next_payload_len = next_len - 1;
@@ -176,16 +174,9 @@ bool send_interested(const int sockfd) {
             free(temp_buffer);
         }
 
-        printf("Received Message ID: %d\n", next_id);
-
         if (next_id == UNCHOKE) {
             printf("Peer has unchoked\n");
-            break;
-        }
-        if (next_id == CHOKE) {
-            printf("Peer is still choking. Waiting to unchoke...\n");
+            return true;
         }
     }
-
-    return true;
 }
