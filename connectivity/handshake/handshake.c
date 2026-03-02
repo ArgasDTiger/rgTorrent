@@ -17,18 +17,18 @@
 #define CHOKE 0
 #define INTERESTED 2
 
-int handshake_by_address(const char* ip, int port, const PeerHandshake *handshake_to_peer);
+int handshake_by_address(const char* ip, int port, const PeerHandshake *peer_handshake);
 bool send_interested(int sockfd);
 
 int establish_handshake(const unsigned char* peers_list, const size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id) {
     if (peers_count <= 0) return -1;
 
-    PeerHandshake my_handshake;
-    my_handshake.pstrlen = 19;
-    memcpy(my_handshake.pstr, BITTORRENT_PROTOCOL_STR, 19);
-    memset(my_handshake.reserved, 0, 8);
-    memcpy(my_handshake.info_hash, info_hash, 20);
-    memcpy(my_handshake.peer_id, peer_id, 20);
+    PeerHandshake peer_handshake;
+    peer_handshake.pstrlen = 19;
+    memcpy(peer_handshake.pstr, BITTORRENT_PROTOCOL_STR, 19);
+    memset(peer_handshake.reserved, 0, 8);
+    memcpy(peer_handshake.info_hash, info_hash, 20);
+    memcpy(peer_handshake.peer_id, peer_id, 20);
 
     for (int i = 0; i < peers_count; i++) {
         const unsigned char *p = peers_list + i * 6;
@@ -37,7 +37,7 @@ int establish_handshake(const unsigned char* peers_list, const size_t peers_coun
         char ip_str[16];
         snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
 
-        const int active_sockfd = handshake_by_address(ip_str, port, &my_handshake);
+        const int active_sockfd = handshake_by_address(ip_str, port, &peer_handshake);
         if (active_sockfd != -1) {
             return active_sockfd;
         }
@@ -45,7 +45,7 @@ int establish_handshake(const unsigned char* peers_list, const size_t peers_coun
     return -1;
 }
 
-int handshake_by_address(const char* ip, const int port, const PeerHandshake *handshake_to_peer) {
+int handshake_by_address(const char* ip, const int port, const PeerHandshake *peer_handshake) {
     printf("Trying to establish a connection to %s:%d...\n", ip, port);
     const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
@@ -75,7 +75,7 @@ int handshake_by_address(const char* ip, const int port, const PeerHandshake *ha
 
     printf("Connected! Sending handshake...\n");
 
-    if (send(sockfd, handshake_to_peer, sizeof(PeerHandshake), 0) != sizeof(PeerHandshake)) {
+    if (send(sockfd, peer_handshake, sizeof(PeerHandshake), 0) != sizeof(PeerHandshake)) {
         printf("Failed to send full handshake.\n");
         close(sockfd);
         return -1;
@@ -84,13 +84,13 @@ int handshake_by_address(const char* ip, const int port, const PeerHandshake *ha
     PeerHandshake handshake_from_peer;
     ssize_t received = recv(sockfd, &handshake_from_peer, sizeof(handshake_from_peer), MSG_WAITALL);
 
-    if (received < 68) {
+    if (received < sizeof(handshake_from_peer)) {
         printf("Peer dropped connection or sent invalid handshake (got %ld bytes).\n", received);
         close(sockfd);
         return -1;
     }
 
-    if (memcmp(handshake_to_peer->info_hash, handshake_from_peer.info_hash, 20) != 0) {
+    if (memcmp(peer_handshake->info_hash, handshake_from_peer.info_hash, 20) != 0) {
         printf("Info hash mismatch occurred, different file was sent.\n");
         close(sockfd);
         return -1;

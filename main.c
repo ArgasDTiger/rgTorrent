@@ -68,6 +68,9 @@ int main() {
 
     if (!announce_node || announce_node->type != BEN_STR || announce_node->string.length == 0) {
         printf("Invalid \"announce\".");
+        free(infoContent);
+        freeBencodeNode(root);
+        fclose(ctx.file);
         return 0;
     }
 
@@ -114,6 +117,7 @@ int main() {
         free(infoContent);
         freeBencodeNode(root);
         fclose(ctx.file);
+        return -1;
     }
 
     for (int i = 0; i < 10; i++) {

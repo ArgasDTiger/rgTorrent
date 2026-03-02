@@ -62,7 +62,7 @@ bool download_piece(const int sockfd, const int piece_index) {
             const ssize_t bytes_read = recv(sockfd, file_data, data_length, MSG_WAITALL);
 
             if (bytes_read == data_length) {
-                printf("Downloaded %zd bytes\n.", bytes_read);
+                printf("Downloaded %zd bytes\n", bytes_read);
 
                 free(file_data);
                 return true;
