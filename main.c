@@ -11,6 +11,8 @@
 #include "handshake.h"
 #include "downloader.h"
 
+#define DEFAULT_BLOCK_SIZE 16384
+
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
 int main() {
@@ -52,6 +54,17 @@ int main() {
     if (!infoNode) {
         printf("Failed to extract value of \"info\" from the file.");
         return 0;
+    }
+
+    BencodeNode* pieces_node = getDictValue(infoNode, "pieces");
+    BencodeNode* piece_length_node = getDictValue(infoNode, "piece length");
+
+    if (!pieces_node || pieces_node->type != BEN_STR || pieces_node->string.length == 0 || !piece_length_node ||
+        piece_length_node->type != BEN_INT) {
+        puts("Failed to extract value of \"pieces\" or \"piece info\" from the file.");
+        freeBencodeNode(root);
+        fclose(ctx.file);
+        return -1;
     }
 
     const long infoLength = infoNode->endOffset - infoNode->startOffset;
@@ -120,17 +133,51 @@ int main() {
         return -1;
     }
 
-    for (int i = 0; i < 10; i++) {
-        const bool is_downloaded = download_piece(active_peer_sockfd, i);
-        if (is_downloaded) {
-            printf("Downloaded.\n");
+    const unsigned char* pieces_hashes = pieces_node->string.data;
+    const size_t piece_length = piece_length_node->intValue;
+
+    int target_piece_index = 0;
+    unsigned char* piece = malloc(piece_length);
+    const size_t number_of_blocks = piece_length / DEFAULT_BLOCK_SIZE;
+
+    for (int i = 0; i < number_of_blocks; i++) {
+        const uint32_t begin_offset = i * DEFAULT_BLOCK_SIZE;
+
+        unsigned char* downloaded_block = download_block(active_peer_sockfd, target_piece_index, begin_offset, DEFAULT_BLOCK_SIZE);
+
+        if (!downloaded_block) {
+            printf("Failed to download block at offset %u.\n", begin_offset);
+            free(piece);
+            close(active_peer_sockfd);
+            free(peers);
+            free(infoContent);
+            freeBencodeNode(root);
+            fclose(ctx.file);
+            return -1;
         }
-        else {
-            printf("Not downloaded.\n");
-        }
+
+        memcpy(piece + begin_offset, downloaded_block, DEFAULT_BLOCK_SIZE);
+
+        free(downloaded_block);
+
+        printf("Progress: %d / %lu blocks downloaded.\n", i + 1, number_of_blocks);
     }
 
 
+    const unsigned char* expected_hash = pieces_hashes + 0 * SHA_DIGEST_LENGTH;
+    if (!verify_piece(piece, piece_length, expected_hash)) {
+        puts("Failed to verify a piece.");
+        free(piece);
+        close(active_peer_sockfd);
+        free(peers);
+        free(infoContent);
+        freeBencodeNode(root);
+        fclose(ctx.file);
+        return -1;
+    }
+
+
+    free(piece);
     close(active_peer_sockfd);
     free(peers);
     free(infoContent);
