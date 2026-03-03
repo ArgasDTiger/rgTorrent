@@ -10,7 +10,8 @@ add_executable(rgTorrent main.c bencoding/bencoder.c bencoding/bencode_parser.c 
         connectivity/announce_connector.c
         helpers/request_helpers.c
         connectivity/handshake/handshake.c
-        downloader/downloader.c)
+        downloader/downloader.c
+        downloader/file_saver.c)
 
 target_include_directories(rgTorrent PRIVATE helpers bencoding connectivity connectivity/handshake downloader)
 target_link_libraries(rgTorrent OpenSSL::SSL OpenSSL::Crypto uriparser::uriparser)
