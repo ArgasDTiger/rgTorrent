@@ -137,15 +137,11 @@ int main() {
     const unsigned char *pieces_hashes = pieces_node->string.data;
     const size_t piece_length = piece_length_node->intValue;
 
-    EndFile *target_files = NULL;
     size_t num_of_files = 0;
+    EndFile *target_files = fill_target_files(infoNode, &num_of_files);
 
-    bool is_fill_target_files_successful;
-    fill_target_files(infoNode, target_files, &num_of_files, &is_fill_target_files_successful);
-
-    if (!is_fill_target_files_successful) {
-        perror("Invalid files dictionary in torrent.\n");
-        free(target_files);
+    if (!target_files) {
+        printf("Failed to parse files from torrent.\n");
         close(active_peer_sockfd);
         free(peers);
         free(infoContent);
@@ -172,7 +168,7 @@ int main() {
 
         const size_t number_of_blocks = (current_piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
 
-        printf("Downloading Piece %d / %zu (Size: %zu bytes) ---\n", current_piece, total_pieces - 1,
+        printf("Downloading Piece %d / %zu (Size: %zu bytes)\n", current_piece, total_pieces - 1,
                current_piece_size);
 
         bool has_piece_downloaded_successfully = true;

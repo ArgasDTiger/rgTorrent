@@ -44,46 +44,46 @@ void write_piece_to_disk(const uint32_t piece_index, const size_t piece_length, 
     }
 }
 
-void fill_target_files(const BencodeNode *infoNode, EndFile *target_files, size_t *num_files, bool *isSuccess) {
+EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files) {
     const BencodeNode *single_file_length = getDictValue(infoNode, "length");
+    EndFile *target_files = NULL;
 
     if (single_file_length) {
         *num_files = 1;
         target_files = malloc(sizeof(EndFile));
-        const BencodeNode *name_node = getDictValue(infoNode, "name");
 
+        const BencodeNode *name_node = getDictValue(infoNode, "name");
         snprintf(target_files[0].filepath, sizeof(target_files[0].filepath), "%s", name_node->string.data);
         target_files[0].length = single_file_length->intValue;
         target_files[0].global_start = 0;
         target_files[0].global_end = target_files[0].length;
-        *isSuccess = true;
-    } else {
-        const BencodeNode *files_list = getDictValue(infoNode, "files");
-        if (files_list && files_list->type == BEN_LIST) {
-            *num_files = files_list->list.length;
-            target_files = malloc(*num_files * sizeof(EndFile));
 
-            size_t current_global_offset = 0;
-
-            for (int i = 0; i < *num_files; i++) {
-                const BencodeNode *file_dict = files_list->list.items[i];
-                const BencodeNode *length_node = getDictValue(file_dict, "length");
-                const BencodeNode *path_list = getDictValue(file_dict, "path");
-
-                const BencodeNode *filename_node = path_list->list.items[path_list->list.length - 1];
-
-                snprintf(target_files[i].filepath, sizeof(target_files[i].filepath), "%s", filename_node->string.data);
-                target_files[i].length = length_node->intValue;
-
-                target_files[i].global_start = current_global_offset;
-                target_files[i].global_end = current_global_offset + target_files[i].length;
-
-                current_global_offset = target_files[i].global_end;
-            }
-            *isSuccess = true;
-        } else {
-            perror("Invalid files dictionary in torrent.\n");
-            *isSuccess = false;
-        }
+        return target_files;
     }
+    const BencodeNode *files_list = getDictValue(infoNode, "files");
+
+    if (files_list && files_list->type == BEN_LIST) {
+        *num_files = files_list->list.length;
+        target_files = malloc(*num_files * sizeof(EndFile));
+
+        size_t current_global_offset = 0;
+
+        for (int i = 0; i < *num_files; i++) {
+            const BencodeNode *file_dict = files_list->list.items[i];
+            const BencodeNode *length_node = getDictValue(file_dict, "length");
+            const BencodeNode *path_list = getDictValue(file_dict, "path");
+
+            const BencodeNode *filename_node = path_list->list.items[path_list->list.length - 1];
+
+            snprintf(target_files[i].filepath, sizeof(target_files[i].filepath), "%s", filename_node->string.data);
+            target_files[i].length = length_node->intValue;
+            target_files[i].global_start = current_global_offset;
+            target_files[i].global_end = current_global_offset + target_files[i].length;
+
+            current_global_offset = target_files[i].global_end;
+        }
+        return target_files;
+    }
+    perror("Invalid files dictionary in torrent.\n");
+    return NULL;
 }
