@@ -15,7 +15,7 @@
 
 char* udp_send_announce_request(int sockfd, const struct addrinfo *server_info, int64_t connection_id,
                                const UdpAnnounceRequest *announce, size_t *out_len);
-char* udp_get_peers_list(char* tracker_host, char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len);
+char* udp_get_peers_list(const char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len);
 char* http_get_peers_list(char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len);
 char* parse_peers_from_http_body(char* body, size_t body_length, size_t *out_peers_length);
 
@@ -78,8 +78,14 @@ char* http_get_peers_list(char* tracker_host, const char* tracker_port, const Ud
         return NULL;
     }
 
+    struct timeval tv;
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
     if (connect(sockfd, server_info->ai_addr, server_info->ai_addrlen) < 0) {
-        perror("Connect failed");
+        perror("Connect failed or timed out after 3 seconds.");
         close(sockfd);
         freeaddrinfo(server_info);
         return NULL;
@@ -195,7 +201,7 @@ char* parse_peers_from_http_body(char* body, const size_t body_length, size_t *o
     return peers_copy;
 }
 
-char* udp_get_peers_list(char* tracker_host, char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len) {
+char* udp_get_peers_list(const char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len) {
     struct addrinfo hints = {0}, *server_info;
     memset(&hints, 0, sizeof hints);
 
@@ -203,14 +209,9 @@ char* udp_get_peers_list(char* tracker_host, char* tracker_port, const UdpAnnoun
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_protocol = IPPROTO_UDP;
 
-     // TODO: temporarily, as the tested ones use HTTP with TCP instead of UDP
-    strncpy(tracker_host, "tracker.opentrackr.org", sizeof(&tracker_host));
-    strncpy(tracker_port, "1337", sizeof(&tracker_port));
-
     const int status = getaddrinfo(tracker_host, tracker_port, &hints, &server_info);
     if (status != 0) {
         fprintf(stderr, "DNS Lookup failed: %s\n", gai_strerror(status));
-        freeaddrinfo(server_info);
         return NULL;
     }
 
@@ -258,11 +259,15 @@ char* udp_get_peers_list(char* tracker_host, char* tracker_port, const UdpAnnoun
     if (be32toh(connect_response.transaction_id) != transaction_id) {
         fprintf(stderr, "Transaction ID mismatch: Expected %d, received %d\n", transaction_id,
                 be32toh(connect_response.transaction_id));
+        close(sockfd);
+        freeaddrinfo(server_info);
         return NULL;
     }
 
     if (be32toh(connect_response.action) != ConnectRequest) {
         fprintf(stderr, "Tracker Error: Action is not %d (Connect)\n", ConnectRequest);
+        close(sockfd);
+        freeaddrinfo(server_info);
         return NULL;
     }
 

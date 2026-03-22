@@ -17,7 +17,7 @@
 // TODO: handle edge cases https://en.wikipedia.org/wiki/Bencode
 
 int main() {
-    const char *fileName = "./../Fedora-Budgie-Live-x86_64-43.torrent";
+    const char *fileName = "./../imaginedragons.torrent";
     BencodeContext ctx;
     ctx.file = fopen(fileName, "rb");
     ctx.hasError = false;
@@ -99,10 +99,40 @@ int main() {
     announce_data.port = DEFAULT_ANNOUNCE_PORT;
     announce_data.uploaded = 0;
     announce_data.downloaded = 0;
-
+    // announce_data.left = ; // TODO: probably need to pass total size?
 
     size_t peers_length = 0;
     char *peers = get_peers_list(&announce_data, &peers_length);
+
+    if (!peers) {
+        printf("Failed to connect to announce address. Attempting to connect to one of the addresses from announce-list.");
+        const BencodeNode *announce_list_node = getDictValue(root, "announce-list");
+        if (announce_list_node && announce_list_node->type == BEN_LIST) {
+            for (int i = 0; i < announce_list_node->list.length; i++) {
+                const BencodeNode *tier = announce_list_node->list.items[i];
+
+                if (tier && tier->type == BEN_LIST) {
+                    for (int j = 0; j < tier->list.length; j++) {
+                        const BencodeNode *tracker_url = tier->list.items[j];
+
+                        if (tracker_url && tracker_url->type == BEN_STR) {
+                            announce_data.announce_address = tracker_url->string.data;
+
+                            peers = get_peers_list(&announce_data, &peers_length);
+
+                            if (peers) {
+                                printf("Successfully retrieved peers from: %s\n", announce_data.announce_address);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (peers) {
+                    break;
+                }
+            }
+        }
+    }
 
     if (!peers) {
         printf("No peers found or connection failed.\n");
