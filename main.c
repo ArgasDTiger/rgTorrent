@@ -10,6 +10,7 @@
 #include "announce_connector.h"
 #include "handshake.h"
 #include "downloader.h"
+#include "file_saver.h"
 
 #define DEFAULT_BLOCK_SIZE 16384
 
@@ -50,14 +51,14 @@ int main() {
         return 0;
     }
 
-    BencodeNode* infoNode = getDictValue(root, "info");
+    BencodeNode *infoNode = getDictValue(root, "info");
     if (!infoNode) {
         printf("Failed to extract value of \"info\" from the file.");
         return 0;
     }
 
-    BencodeNode* pieces_node = getDictValue(infoNode, "pieces");
-    BencodeNode* piece_length_node = getDictValue(infoNode, "piece length");
+    BencodeNode *pieces_node = getDictValue(infoNode, "pieces");
+    BencodeNode *piece_length_node = getDictValue(infoNode, "piece length");
 
     if (!pieces_node || pieces_node->type != BEN_STR || pieces_node->string.length == 0 || !piece_length_node ||
         piece_length_node->type != BEN_INT) {
@@ -68,7 +69,7 @@ int main() {
     }
 
     const long infoLength = infoNode->endOffset - infoNode->startOffset;
-    char* infoContent = malloc(infoLength);
+    char *infoContent = malloc(infoLength);
     fseek(ctx.file, infoNode->startOffset, SEEK_SET);
     fread(infoContent, infoLength, 1, ctx.file);
 
@@ -77,7 +78,7 @@ int main() {
     unsigned char info_hash[SHA_DIGEST_LENGTH];
     SHA1(infoContent, infoLength, info_hash);
 
-    BencodeNode* announce_node = getDictValue(root, "announce");
+    BencodeNode *announce_node = getDictValue(root, "announce");
 
     if (!announce_node || announce_node->type != BEN_STR || announce_node->string.length == 0) {
         printf("Invalid \"announce\".");
@@ -101,7 +102,7 @@ int main() {
 
 
     size_t peers_length = 0;
-    char* peers = get_peers_list(&announce_data, &peers_length);
+    char *peers = get_peers_list(&announce_data, &peers_length);
 
     if (!peers) {
         printf("No peers found or connection failed.\n");
@@ -133,41 +134,18 @@ int main() {
         return -1;
     }
 
-    const unsigned char* pieces_hashes = pieces_node->string.data;
+    const unsigned char *pieces_hashes = pieces_node->string.data;
     const size_t piece_length = piece_length_node->intValue;
 
-    int target_piece_index = 0;
-    unsigned char* piece = malloc(piece_length);
-    const size_t number_of_blocks = piece_length / DEFAULT_BLOCK_SIZE;
+    EndFile *target_files = NULL;
+    size_t num_of_files = 0;
 
-    for (int i = 0; i < number_of_blocks; i++) {
-        const uint32_t begin_offset = i * DEFAULT_BLOCK_SIZE;
+    bool is_fill_target_files_successful;
+    fill_target_files(infoNode, target_files, &num_of_files, &is_fill_target_files_successful);
 
-        unsigned char* downloaded_block = download_block(active_peer_sockfd, target_piece_index, begin_offset, DEFAULT_BLOCK_SIZE);
-
-        if (!downloaded_block) {
-            printf("Failed to download block at offset %u.\n", begin_offset);
-            free(piece);
-            close(active_peer_sockfd);
-            free(peers);
-            free(infoContent);
-            freeBencodeNode(root);
-            fclose(ctx.file);
-            return -1;
-        }
-
-        memcpy(piece + begin_offset, downloaded_block, DEFAULT_BLOCK_SIZE);
-
-        free(downloaded_block);
-
-        printf("Progress: %d / %lu blocks downloaded.\n", i + 1, number_of_blocks);
-    }
-
-
-    const unsigned char* expected_hash = pieces_hashes + 0 * SHA_DIGEST_LENGTH;
-    if (!verify_piece(piece, piece_length, expected_hash)) {
-        puts("Failed to verify a piece.");
-        free(piece);
+    if (!is_fill_target_files_successful) {
+        perror("Invalid files dictionary in torrent.\n");
+        free(target_files);
         close(active_peer_sockfd);
         free(peers);
         free(infoContent);
@@ -176,10 +154,67 @@ int main() {
         return -1;
     }
 
-    const char
+    const size_t total_pieces = pieces_node->string.length / SHA_DIGEST_LENGTH;
+    const size_t total_torrent_size = target_files[num_of_files - 1].global_end;
 
+    unsigned char *piece_buffer = malloc(piece_length);
 
-    free(piece);
+    for (int current_piece = 0; current_piece < total_pieces; current_piece++) {
+        size_t current_piece_size = piece_length;
+
+        // if the piece is the last (size may differ)
+        if (current_piece == total_pieces - 1) {
+            const size_t remainder = total_torrent_size % piece_length;
+            if (remainder != 0) {
+                current_piece_size = remainder;
+            }
+        }
+
+        const size_t number_of_blocks = (current_piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
+
+        printf("Downloading Piece %d / %zu (Size: %zu bytes) ---\n", current_piece, total_pieces - 1,
+               current_piece_size);
+
+        bool has_piece_downloaded_successfully = true;
+
+        for (int i = 0; i < number_of_blocks; i++) {
+            const uint32_t begin_offset = i * DEFAULT_BLOCK_SIZE;
+
+            uint32_t block_size_to_request = DEFAULT_BLOCK_SIZE;
+            // again, if the block is the last
+            if (begin_offset + DEFAULT_BLOCK_SIZE > current_piece_size) {
+                block_size_to_request = current_piece_size - begin_offset;
+            }
+
+            unsigned char *downloaded_block = download_block(active_peer_sockfd, current_piece, begin_offset,
+                                                             block_size_to_request);
+            if (!downloaded_block) {
+                printf("Failed to download block at offset %u.\n", begin_offset);
+                has_piece_downloaded_successfully = false;
+                break;
+            }
+
+            memcpy(piece_buffer + begin_offset, downloaded_block, block_size_to_request);
+            free(downloaded_block);
+        }
+
+        if (!has_piece_downloaded_successfully) {
+            printf("Stopping the downloading. Peer connection lost.\n");
+            break;
+        }
+
+        const unsigned char *expected_hash = pieces_hashes + current_piece * SHA_DIGEST_LENGTH;
+        if (!verify_piece(piece_buffer, current_piece_size, expected_hash)) {
+            puts("Failed to verify a piece.");
+            break;
+        }
+
+        printf("Verified piece %d, will write to the disk.\n", current_piece);
+        write_piece_to_disk(current_piece, piece_length, piece_buffer, target_files, num_of_files);
+    }
+
+    free(piece_buffer);
+    free(target_files);
     close(active_peer_sockfd);
     free(peers);
     free(infoContent);
