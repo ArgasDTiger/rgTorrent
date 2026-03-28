@@ -153,7 +153,9 @@ int main() {
                port);
     }
 
-    const int active_peer_sockfd = establish_handshake(peers, count, info_hash, peer_id);
+    bool* peer_inventory = NULL;
+    const size_t total_pieces = pieces_node->string.length / SHA_DIGEST_LENGTH;
+    const int active_peer_sockfd = establish_handshake(peers, count, info_hash, peer_id, total_pieces, &peer_inventory);
 
     if (active_peer_sockfd == -1) {
         printf("Failed to establish a handshake.\n");
@@ -180,12 +182,14 @@ int main() {
         return -1;
     }
 
-    const size_t total_pieces = pieces_node->string.length / SHA_DIGEST_LENGTH;
     const size_t total_torrent_size = target_files[num_of_files - 1].global_end;
 
     unsigned char *piece_buffer = malloc(piece_length);
 
     for (int current_piece = 0; current_piece < total_pieces; current_piece++) {
+        if (peer_inventory && !peer_inventory[current_piece]) {
+            continue;
+        }
         size_t current_piece_size = piece_length;
 
         // if the piece is the last (size may differ)

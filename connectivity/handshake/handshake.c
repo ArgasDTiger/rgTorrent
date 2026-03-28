@@ -17,10 +17,10 @@
 #define CHOKE 0
 #define INTERESTED 2
 
-int handshake_by_address(const char* ip, int port, const PeerHandshake *peer_handshake);
+int handshake_by_address(const char* ip, int port, const PeerHandshake *peer_handshake, size_t total_pieces, bool **out_bitfield);
 bool send_interested(int sockfd);
 
-int establish_handshake(const unsigned char* peers_list, const size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id) {
+int establish_handshake(const unsigned char* peers_list, const size_t peers_count, const uint8_t *info_hash, const uint8_t *peer_id, const size_t total_pieces, bool **out_bitfield) {
     if (peers_count <= 0) return -1;
 
     PeerHandshake peer_handshake;
@@ -37,7 +37,8 @@ int establish_handshake(const unsigned char* peers_list, const size_t peers_coun
         char ip_str[16];
         snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", p[0], p[1], p[2], p[3]);
 
-        const int active_sockfd = handshake_by_address(ip_str, port, &peer_handshake);
+        const int active_sockfd = handshake_by_address(ip_str, port, &peer_handshake, total_pieces, out_bitfield);
+
         if (active_sockfd != -1) {
             return active_sockfd;
         }
@@ -45,7 +46,7 @@ int establish_handshake(const unsigned char* peers_list, const size_t peers_coun
     return -1;
 }
 
-int handshake_by_address(const char* ip, const int port, const PeerHandshake *peer_handshake) {
+int handshake_by_address(const char* ip, const int port, const PeerHandshake *peer_handshake, const size_t total_pieces, bool **out_bitfield) {
     printf("Trying to establish a connection to %s:%d...\n", ip, port);
     const int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
@@ -126,10 +127,30 @@ int handshake_by_address(const char* ip, const int port, const PeerHandshake *pe
     const uint32_t payload_length = message_length - 1;
     if (payload_length > 0) {
         unsigned char *payload = malloc(payload_length);
+
         received = recv(sockfd, payload, payload_length, MSG_WAITALL);
+        if (received < payload_length) {
+            puts("Failed to receive a full payload.");
+            free(payload);
+            close(sockfd);
+            return -1;
+        }
 
         if (msg_id == BITFIELD) {
-            printf("Received a BITFIELD message.\n");
+            puts("Received a BITFIELD message. Parsing inventory...");
+
+            *out_bitfield = calloc(total_pieces, sizeof(bool));
+
+            for (size_t i = 0; i < total_pieces; i++) {
+                const size_t byte_index = i / 8;
+                const size_t bit_index = 7 - (i % 8);
+
+                if (byte_index < payload_length) {
+                    if (payload[byte_index] >> bit_index & 1) {
+                        (*out_bitfield)[i] = true;
+                    }
+                }
+            }
         }
 
         free(payload);
