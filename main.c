@@ -243,6 +243,7 @@ int main() {
         write_piece_to_disk(current_piece, piece_length, piece_buffer, target_files, num_of_files);
     }
 
+    free(peer_inventory);
     free(piece_buffer);
     free(target_files);
     close(active_peer_sockfd);
