@@ -16,5 +16,5 @@ typedef struct {
 void write_piece_to_disk(uint32_t piece_index, size_t piece_length, const unsigned char *piece_buffer,
                          const EndFile *end_files, int num_files);
 
-EndFile* fill_target_files(const BencodeNode *infoNode, size_t *num_files) ;
+EndFile* fill_target_files(const BencodeNode *infoNode, size_t *num_files, const char *save_path);
 #endif // FILE_SAVER_H

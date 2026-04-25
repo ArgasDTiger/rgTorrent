@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 void write_piece_to_disk(const uint32_t piece_index, const size_t piece_length, const unsigned char *piece_buffer,
                          const EndFile *end_files, const int num_files) {
@@ -44,7 +45,7 @@ void write_piece_to_disk(const uint32_t piece_index, const size_t piece_length, 
     }
 }
 
-EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files) {
+EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files, const char *save_path) {
     const BencodeNode *single_file_length = getDictValue(infoNode, "length");
     EndFile *target_files = NULL;
 
@@ -53,37 +54,56 @@ EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files) {
         target_files = malloc(sizeof(EndFile));
 
         const BencodeNode *name_node = getDictValue(infoNode, "name");
-        snprintf(target_files[0].filepath, sizeof(target_files[0].filepath), "%s", name_node->string.data);
+        snprintf(target_files[0].filepath, sizeof(target_files[0].filepath),
+                 "%s/%s", save_path, name_node->string.data);
         target_files[0].length = single_file_length->intValue;
         target_files[0].global_start = 0;
         target_files[0].global_end = target_files[0].length;
-
         return target_files;
     }
-    const BencodeNode *files_list = getDictValue(infoNode, "files");
 
+    const BencodeNode *files_list = getDictValue(infoNode, "files");
     if (files_list && files_list->type == BEN_LIST) {
         *num_files = files_list->list.length;
         target_files = malloc(*num_files * sizeof(EndFile));
-
         size_t current_global_offset = 0;
 
-        for (int i = 0; i < *num_files; i++) {
-            const BencodeNode *file_dict = files_list->list.items[i];
+        for (int i = 0; i < (int)*num_files; i++) {
+            const BencodeNode *file_dict   = files_list->list.items[i];
             const BencodeNode *length_node = getDictValue(file_dict, "length");
-            const BencodeNode *path_list = getDictValue(file_dict, "path");
+            const BencodeNode *path_list   = getDictValue(file_dict, "path");
 
-            const BencodeNode *filename_node = path_list->list.items[path_list->list.length - 1];
+            if (!path_list || path_list->type != BEN_LIST ||
+                path_list->list.length == 0 || !length_node) {
+                target_files[i].filepath[0]  = '\0';
+                target_files[i].length       = 0;
+                target_files[i].global_start = current_global_offset;
+                target_files[i].global_end   = current_global_offset;
+                continue;
+            }
 
-            snprintf(target_files[i].filepath, sizeof(target_files[i].filepath), "%s", filename_node->string.data);
-            target_files[i].length = length_node->intValue;
+            // save path
+            snprintf(target_files[i].filepath, sizeof(target_files[i].filepath),
+                     "%s", save_path);
+            for (size_t seg = 0; seg < path_list->list.length; seg++) {
+                const BencodeNode *s = path_list->list.items[seg];
+                if (!s || s->type != BEN_STR) continue;
+                strncat(target_files[i].filepath, "/",
+                        sizeof(target_files[i].filepath)
+                            - strlen(target_files[i].filepath) - 1);
+                strncat(target_files[i].filepath, (char *)s->string.data,
+                        sizeof(target_files[i].filepath)
+                            - strlen(target_files[i].filepath) - 1);
+            }
+
+            target_files[i].length       = length_node->intValue;
             target_files[i].global_start = current_global_offset;
-            target_files[i].global_end = current_global_offset + target_files[i].length;
-
-            current_global_offset = target_files[i].global_end;
+            target_files[i].global_end   = current_global_offset + target_files[i].length;
+            current_global_offset        = target_files[i].global_end;
         }
         return target_files;
     }
-    perror("Invalid files dictionary in torrent.\n");
+
+    fprintf(stderr, "Invalid files dictionary in torrent.\n");
     return NULL;
 }

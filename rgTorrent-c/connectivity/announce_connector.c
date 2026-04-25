@@ -155,7 +155,7 @@ char* http_get_peers_list(char* tracker_host, const char* tracker_port, const Ud
     return peers;
 }
 
-char* parse_peers_from_http_body(char* body, const size_t body_length, size_t *out_peers_length) {
+char* parse_peers_from_http_body(char* body, size_t body_length, size_t *out_peers_length) {
     FILE *mem_file = fmemopen(body, body_length, "rb");
     if (!mem_file) {
         perror("fmemopen failed");

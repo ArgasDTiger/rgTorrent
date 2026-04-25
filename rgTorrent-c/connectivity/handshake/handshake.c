@@ -98,6 +98,7 @@ int handshake_by_address(const char* ip, const int port, const PeerHandshake *pe
     }
 
     printf("Valid handshake received from %s:%d.\n", ip, port);
+    *out_bitfield = calloc(total_pieces, sizeof(bool));
 
     uint32_t message_length_net;
     received = recv(sockfd, &message_length_net, sizeof(message_length_net), MSG_WAITALL);
@@ -138,9 +139,6 @@ int handshake_by_address(const char* ip, const int port, const PeerHandshake *pe
 
         if (msg_id == BITFIELD) {
             puts("Received a BITFIELD message. Parsing inventory...");
-
-            *out_bitfield = calloc(total_pieces, sizeof(bool));
-
             for (size_t i = 0; i < total_pieces; i++) {
                 const size_t byte_index = i / 8;
                 const size_t bit_index = 7 - (i % 8);

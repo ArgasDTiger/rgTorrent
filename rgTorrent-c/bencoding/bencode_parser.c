@@ -176,14 +176,14 @@ BencodeNode *parseString(BencodeContext *ctx) {
     BencodeNode *node = malloc(sizeof(BencodeNode));
     node->type = BEN_STR;
     node->string.length = charsToRead;
-    node->string.data = malloc(charsToRead);
-
+    node->string.data = malloc(charsToRead + 1);
     const size_t readLength = fread(node->string.data, 1, charsToRead, ctx->file);
     if (readLength != charsToRead) {
         freeBencodeNode(node);
         reportError(ctx, "Unexpected EOF reading string data. Expected %ld, got %ld.", charsToRead, readLength);
         return NULL;
     }
+    node->string.data[charsToRead] = '\0';
     return node;
 }
 

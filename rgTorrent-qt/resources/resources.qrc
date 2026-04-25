@@ -1,0 +1,11 @@
+<RCC>
+    <!--
+        Translation .qm files are compiled from the .ts sources by CMake's
+        qt_add_translations() call and embedded automatically into the binary.
+        This file is reserved for other static resources (icons, etc.).
+        Add entries here as the project grows, e.g.:
+            <qresource prefix="/icons">
+                <file>icons/add.svg</file>
+            </qresource>
+    -->
+</RCC>
