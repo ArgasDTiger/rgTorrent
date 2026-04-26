@@ -3,47 +3,15 @@
 #include "bencoder.h"
 #include "announce_connector.h"
 #include "handshake.h"
-#include "downloader.h"
-#include "file_saver.h"
 #include "helpers.h"
+#include "swarm.h"
+#include "file_saver.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <openssl/sha.h>
-
-#define TS_MAX_TORRENTS 64
-#define DEFAULT_BLOCK_SIZE 16384
-
-typedef struct {
-    int         id;
-    char        torrent_path[512];
-    char        save_path[512];
-    char        name[256];
-    uint64_t    size_bytes;
-    double      progress;
-    int         seeds;
-    int         peers_count;
-    bool        seeding;
-    TsStatus    status;
-    pthread_t   thread;
-    bool        thread_running;
-    pthread_mutex_t lock;        // protects progress/status/seeds/peers
-
-    uint8_t     info_hash[20];
-    uint8_t     peer_id[20];
-    size_t      total_pieces;
-    size_t      piece_length;
-} TorrentEntry;
-
-struct TorrentSession {
-    TorrentEntry entries[TS_MAX_TORRENTS];
-    int          count;
-    int          next_id;
-    pthread_mutex_t lock;
-};
-
 
 TorrentSession *ts_create(void) {
     TorrentSession *s = calloc(1, sizeof(TorrentSession));
@@ -60,15 +28,15 @@ void ts_destroy(TorrentSession *s) {
 
 typedef struct {
     TorrentSession *session;
-    int             entry_index;
-    BencodeNode    *root;
+    int entry_index;
+    BencodeNode *root;
 } ThreadArgs;
 
 static void *download_thread(void *arg) {
-    ThreadArgs     *targs = arg;
-    TorrentSession *s     = targs->session;
-    const int             idx   = targs->entry_index;
-    BencodeNode    *root  = targs->root;
+    ThreadArgs *targs = arg;
+    TorrentSession *s = targs->session;
+    const int idx = targs->entry_index;
+    BencodeNode *root = targs->root;
     free(targs);
 
     TorrentEntry *e = &s->entries[idx];
@@ -89,7 +57,7 @@ static void *download_thread(void *arg) {
         return NULL;
     }
 
-    BencodeNode *pieces_node       = getDictValue(infoNode, "pieces");
+    BencodeNode *pieces_node = getDictValue(infoNode, "pieces");
     BencodeNode *piece_length_node = getDictValue(infoNode, "piece length");
 
     if (!pieces_node || pieces_node->type != BEN_STR ||
@@ -108,6 +76,10 @@ static void *download_thread(void *arg) {
     pthread_mutex_lock(&e->lock);
     e->total_pieces = total_pieces;
     e->piece_length = piece_length;
+
+    e->piece_states = calloc(total_pieces, sizeof(uint8_t));
+    e->pieces_completed = 0;
+    pthread_mutex_unlock(&e->lock);
     pthread_mutex_unlock(&e->lock);
 
     {
@@ -124,7 +96,7 @@ static void *download_thread(void *arg) {
         fseek(f, infoNode->startOffset, SEEK_SET);
         fread(info_buf, info_len, 1, f);
         fclose(f);
-        SHA1((unsigned char *)info_buf, info_len, e->info_hash);
+        SHA1((unsigned char *) info_buf, info_len, e->info_hash);
         free(info_buf);
     }
 
@@ -132,12 +104,12 @@ static void *download_thread(void *arg) {
 
     UdpAnnounceRequest req = {
         .announce_address = announceNode ? announceNode->string.data : NULL,
-        .info_hash        = e->info_hash,
-        .peer_id          = e->peer_id,
-        .port             = 6881,
-        .uploaded         = 0,
-        .downloaded       = 0,
-        .left             = (long)e->size_bytes,
+        .info_hash = e->info_hash,
+        .peer_id = e->peer_id,
+        .port = 6881,
+        .uploaded = 0,
+        .downloaded = 0,
+        .left = (long) e->size_bytes,
     };
 
     size_t peers_len = 0;
@@ -173,24 +145,8 @@ static void *download_thread(void *arg) {
 
     const size_t peers_count = peers_len / 6;
     pthread_mutex_lock(&e->lock);
-    e->peers_count = (int)peers_count;
+    e->peers_count = (int) peers_count;
     pthread_mutex_unlock(&e->lock);
-
-    bool *peer_inventory = NULL;
-    const int sockfd = establish_handshake(
-        (unsigned char *)peers, peers_count,
-        e->info_hash, e->peer_id,
-        total_pieces, &peer_inventory);
-    free(peers);
-
-    if (sockfd == -1) {
-        fprintf(stderr, "[thread] Handshake failed for %s\n", e->name);
-        pthread_mutex_lock(&e->lock);
-        e->status = TS_STATUS_ERROR;
-        pthread_mutex_unlock(&e->lock);
-        freeBencodeNode(root);
-        return NULL;
-    }
 
     size_t num_files = 0;
     EndFile *end_files = fill_target_files(infoNode, &num_files, e->save_path);
@@ -198,84 +154,33 @@ static void *download_thread(void *arg) {
         pthread_mutex_lock(&e->lock);
         e->status = TS_STATUS_ERROR;
         pthread_mutex_unlock(&e->lock);
-        free(peer_inventory);
-        close(sockfd);
+        free(peers);
         freeBencodeNode(root);
         return NULL;
     }
 
-    const size_t total_torrent_size = end_files[num_files - 1].global_end;
     const unsigned char *pieces_hashes = pieces_node->string.data;
-    unsigned char *piece_buffer = malloc(piece_length);
-    for (size_t current_piece = 0; current_piece < total_pieces; current_piece++) {
-        if (peer_inventory && !peer_inventory[current_piece])
-            continue;
 
-        size_t current_piece_size = piece_length;
-        if (current_piece == total_pieces - 1) {
-            const size_t remainder = total_torrent_size % piece_length;
-            if (remainder != 0)
-                current_piece_size = remainder;
-        }
+    start_swarm(e, (unsigned char *) peers, peers_count, pieces_hashes, end_files, (int) num_files);
 
-        const size_t num_blocks =
-            (current_piece_size + DEFAULT_BLOCK_SIZE - 1) / DEFAULT_BLOCK_SIZE;
-
-        bool piece_ok = true;
-        for (size_t i = 0; i < num_blocks; i++) {
-            const uint32_t begin = (uint32_t)(i * DEFAULT_BLOCK_SIZE);
-            uint32_t block_size  = DEFAULT_BLOCK_SIZE;
-            if (begin + DEFAULT_BLOCK_SIZE > current_piece_size)
-                block_size = (uint32_t)(current_piece_size - begin);
-
-            unsigned char *block = download_block(sockfd, (uint32_t)current_piece,
-                                                   begin, block_size);
-            if (!block) {
-                piece_ok = false;
-                break;
-            }
-            memcpy(piece_buffer + begin, block, block_size);
-            free(block);
-        }
-
-        if (!piece_ok) {
-            fprintf(stderr, "[thread] Peer connection lost at piece %zu\n", current_piece);
-            break;
-        }
-
-        const unsigned char *expected_hash =
-            pieces_hashes + current_piece * SHA_DIGEST_LENGTH;
-        if (!verify_piece(piece_buffer, current_piece_size, expected_hash)) {
-            fprintf(stderr, "[thread] Piece %zu failed verification\n", current_piece);
-            break;
-        }
-
-        write_piece_to_disk((uint32_t)current_piece, piece_length,
-                            piece_buffer, end_files, num_files);
-
-        pthread_mutex_lock(&e->lock);
-        e->progress = (double)(current_piece + 1) / (double)total_pieces;
-        pthread_mutex_unlock(&e->lock);
-    }
+    free(end_files);
+    free(peers);
 
     pthread_mutex_lock(&e->lock);
-    e->status  = TS_STATUS_SEEDING;
-    e->seeding = true;
-    e->progress = 1.0;
+    if (e->pieces_completed == e->total_pieces) {
+        e->status = TS_STATUS_SEEDING;
+        e->seeding = true;
+        e->progress = 1.0;
+    }
     pthread_mutex_unlock(&e->lock);
 
-    free(piece_buffer);
-    free(end_files);
-    free(peer_inventory);
-    close(sockfd);
     freeBencodeNode(root);
     return NULL;
 }
 
 int ts_add_torrent(TorrentSession *s,
                    const char *torrent_path,
-                   const char *save_path)
-{
+                   const char *save_path) {
     pthread_mutex_lock(&s->lock);
     if (s->count >= TS_MAX_TORRENTS) {
         pthread_mutex_unlock(&s->lock);
@@ -289,7 +194,7 @@ int ts_add_torrent(TorrentSession *s,
 
     e->id = s->next_id++;
     strncpy(e->torrent_path, torrent_path, sizeof e->torrent_path - 1);
-    strncpy(e->save_path,    save_path,    sizeof e->save_path    - 1);
+    strncpy(e->save_path, save_path, sizeof e->save_path - 1);
     e->status = TS_STATUS_DOWNLOADING;
 
     rand_str(e->peer_id, 20);
@@ -305,20 +210,20 @@ int ts_add_torrent(TorrentSession *s,
                 const BencodeNode *nameNode = getDictValue(info, "name");
                 if (nameNode && nameNode->type == BEN_STR)
                     snprintf(e->name, sizeof e->name, "%.*s",
-                             (int)nameNode->string.length,
+                             (int) nameNode->string.length,
                              nameNode->string.data);
                 const BencodeNode *lenNode = getDictValue(info, "length");
                 if (lenNode && lenNode->type == BEN_INT)
-                    e->size_bytes = (uint64_t)lenNode->intValue;
+                    e->size_bytes = (uint64_t) lenNode->intValue;
             }
         }
         fclose(ctx.file);
     }
 
     ThreadArgs *args = malloc(sizeof *args);
-    args->session     = s;
+    args->session = s;
     args->entry_index = idx;
-    args->root        = root;
+    args->root = root;
     pthread_create(&e->thread, NULL, download_thread, args);
     e->thread_running = true;
 
@@ -331,11 +236,15 @@ void ts_remove_torrent(TorrentSession *s, int id) {
     pthread_mutex_lock(&s->lock);
     for (int i = 0; i < s->count; i++) {
         if (s->entries[i].id == id) {
-            // TODO: signal thread to stop before joining
             if (s->entries[i].thread_running)
                 pthread_join(s->entries[i].thread, NULL);
             pthread_mutex_destroy(&s->entries[i].lock);
-            memmove(&s->entries[i], &s->entries[i+1],
+
+            if (s->entries[i].piece_states) {
+                free(s->entries[i].piece_states);
+            }
+
+            memmove(&s->entries[i], &s->entries[i + 1],
                     (s->count - i - 1) * sizeof(TorrentEntry));
             s->count--;
             break;
@@ -346,12 +255,11 @@ void ts_remove_torrent(TorrentSession *s, int id) {
 
 int ts_create_torrent(const char *source_dir,
                       const char *output_path,
-                      const char *tracker_url)
-{
+                      const char *tracker_url) {
     // TODO: implement torrent creation
-    (void)source_dir;
-    (void)output_path;
-    (void)tracker_url;
+    (void) source_dir;
+    (void) output_path;
+    (void) tracker_url;
     return 0;
 }
 
@@ -360,34 +268,40 @@ int ts_torrent_count(const TorrentSession *s) { return s->count; }
 int ts_torrent_id(const TorrentSession *s, const int index) {
     return s->entries[index].id;
 }
+
 const char *ts_torrent_name(const TorrentSession *s, const int index) {
     return s->entries[index].name;
 }
+
 uint64_t ts_torrent_size(const TorrentSession *s, const int index) {
     return s->entries[index].size_bytes;
 }
+
 double ts_torrent_progress(const TorrentSession *s, const int index) {
-    TorrentEntry *e = (TorrentEntry *)&s->entries[index];
+    TorrentEntry *e = (TorrentEntry *) &s->entries[index];
     pthread_mutex_lock(&e->lock);
     const double p = e->progress;
     pthread_mutex_unlock(&e->lock);
     return p;
 }
+
 TsStatus ts_torrent_status(const TorrentSession *s, const int index) {
     return s->entries[index].status;
 }
+
 const char *ts_torrent_status_str(const TorrentSession *s, int i) {
     switch (s->entries[i].status) {
         case TS_STATUS_DOWNLOADING: return "Downloading";
-        case TS_STATUS_SEEDING:     return "Seeding";
-        case TS_STATUS_PAUSED:      return "Paused";
-        case TS_STATUS_ERROR:       return "Error";
-        case TS_STATUS_QUEUED:      return "Queued";
-        default:                    return "Unknown";
+        case TS_STATUS_SEEDING: return "Seeding";
+        case TS_STATUS_PAUSED: return "Paused";
+        case TS_STATUS_ERROR: return "Error";
+        case TS_STATUS_QUEUED: return "Queued";
+        default: return "Unknown";
     }
 }
-int  ts_torrent_seeds (const TorrentSession *s, const int index) { return s->entries[index].seeds; }
-int  ts_torrent_peers (const TorrentSession *s, const int index) { return s->entries[index].peers_count; }
+
+int ts_torrent_seeds(const TorrentSession *s, const int index) { return s->entries[index].seeds; }
+int ts_torrent_peers(const TorrentSession *s, const int index) { return s->entries[index].peers_count; }
 bool ts_torrent_is_seeding(const TorrentSession *s, const int index) { return s->entries[index].seeding; }
 const char *ts_torrent_save_path(const TorrentSession *s, const int index) { return s->entries[index].save_path; }
 const char *ts_torrent_file_path(const TorrentSession *s, const int index) { return s->entries[index].torrent_path; }

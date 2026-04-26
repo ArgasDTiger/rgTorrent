@@ -28,6 +28,7 @@ set(C_SOURCES
         ${C_BACKEND_DIR}/connectivity/handshake/handshake.c
         ${C_BACKEND_DIR}/downloader/downloader.c
         ${C_BACKEND_DIR}/downloader/file_saver.c
+        ${C_BACKEND_DIR}/swarm/swarm.c
         # main.c is intentionally excluded - Qt's main() replaces it.
 )
 
@@ -38,6 +39,7 @@ set(C_INCLUDE_DIRS
         ${C_BACKEND_DIR}/connectivity
         ${C_BACKEND_DIR}/connectivity/handshake
         ${C_BACKEND_DIR}/downloader
+        ${C_BACKEND_DIR}/swarm
 )
 
 set(TS_FILES

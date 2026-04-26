@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 
 #define BITTORRENT_PROTOCOL_STR "BitTorrent protocol"
 #define BITFIELD 5
@@ -53,6 +54,8 @@ int handshake_by_address(const char* ip, const int port, const PeerHandshake *pe
         perror("Socket creation failed.");
         return -1;
     }
+    const int flags = fcntl(sockfd, F_GETFL, 0);
+    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 
     const struct timeval tv = {.tv_sec = 3, .tv_usec = 0};
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
