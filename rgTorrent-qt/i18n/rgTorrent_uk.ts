@@ -71,6 +71,7 @@
         <name>TorrentBackend</name>
         <message><source>Failed to add torrent</source><translation>Не вдалося додати торент</translation></message>
         <message><source>Cannot open file.</source><translation>Неможливо відкрити файл.</translation></message>
+        <message><source>Verifying</source><translation>Перевірка</translation></message>
         <message><source>Downloading</source><translation>Завантаження</translation></message>
         <message><source>Seeding</source><translation>Роздача</translation></message>
         <message><source>Paused</source><translation>На паузі</translation></message>

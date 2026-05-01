@@ -71,6 +71,7 @@
         <name>TorrentBackend</name>
         <message><source>Failed to add torrent</source><translation>Failed to add torrent</translation></message>
         <message><source>Cannot open file.</source><translation>Cannot open file.</translation></message>
+        <message><source>Verifying</source><translation>Verifying</translation></message>
         <message><source>Downloading</source><translation>Downloading</translation></message>
         <message><source>Seeding</source><translation>Seeding</translation></message>
         <message><source>Paused</source><translation>Paused</translation></message>

@@ -143,6 +143,7 @@ void TorrentListWidget::rebuildTable() {
     m_table->setSortingEnabled(false);
     m_table->setRowCount(m_filtered.size());
 
+    const QString statusVerifying   = QCoreApplication::translate("TorrentBackend", "Verifying");
     const QString statusDownloading = QCoreApplication::translate("TorrentBackend", "Downloading");
     const QString statusSeeding = QCoreApplication::translate("TorrentBackend", "Seeding");
     const QString statusPaused = QCoreApplication::translate("TorrentBackend", "Paused");
@@ -162,6 +163,8 @@ void TorrentListWidget::rebuildTable() {
 
         if (t.status == statusDownloading)
             statusItem->setForeground(QColor("#7986cb"));
+        else if (t.status == statusVerifying)
+            statusItem->setForeground(QColor("#ba68c8"));
         else if (t.status == statusSeeding)
             statusItem->setForeground(QColor("#66bb6a"));
         else if (t.status == statusPaused)

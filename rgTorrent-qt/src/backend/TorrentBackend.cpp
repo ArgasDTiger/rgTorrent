@@ -20,6 +20,7 @@ static QString formatSize(const quint64 bytes) {
 
 static QString statusToString(const TsStatus s) {
     switch (s) {
+        case TS_STATUS_VERIFYING:   return TorrentBackend::tr("Verifying");
         case TS_STATUS_DOWNLOADING: return TorrentBackend::tr("Downloading");
         case TS_STATUS_SEEDING:     return TorrentBackend::tr("Seeding");
         case TS_STATUS_PAUSED:      return TorrentBackend::tr("Paused");

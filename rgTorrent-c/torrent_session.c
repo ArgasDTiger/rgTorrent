@@ -242,7 +242,10 @@ static void *download_thread(void *arg) {
     if (e->pieces_completed == e->total_pieces) {
         e->status = TS_STATUS_SEEDING;
         e->seeding = true;
+    } else {
+        e->status = TS_STATUS_DOWNLOADING;
     }
+
     pthread_mutex_unlock(&e->lock);
 
     printf("[INFO] Verification complete. Recovered %d / %ld pieces.\n", recovered_pieces, e->total_pieces);
@@ -281,7 +284,8 @@ int ts_add_torrent(TorrentSession *s,
     e->id = s->next_id++;
     strncpy(e->torrent_path, torrent_path, sizeof e->torrent_path - 1);
     strncpy(e->save_path, save_path, sizeof e->save_path - 1);
-    e->status = TS_STATUS_DOWNLOADING;
+
+    e->status = TS_STATUS_VERIFYING;
 
     rand_str(e->peer_id, 20);
 
@@ -383,6 +387,7 @@ TsStatus ts_torrent_status(const TorrentSession *s, const int index) {
 
 const char *ts_torrent_status_str(const TorrentSession *s, int i) {
     switch (s->entries[i].status) {
+        case TS_STATUS_VERIFYING: return "Verifying";
         case TS_STATUS_DOWNLOADING: return "Downloading";
         case TS_STATUS_SEEDING: return "Seeding";
         case TS_STATUS_PAUSED: return "Paused";
