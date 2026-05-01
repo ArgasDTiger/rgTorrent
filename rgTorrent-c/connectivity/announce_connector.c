@@ -7,17 +7,26 @@
 #include <uriparser/Uri.h>
 #include <unistd.h>
 #include <endian.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/poll.h>
+
 #include "request_helpers.h"
 #include "bencode_parser.h"
 #include "bencoder.h"
 
 #define PROTOCOL_ID 0x41727101980LL
 
-char* udp_send_announce_request(int sockfd, const struct addrinfo *server_info, int64_t connection_id,
-                               const UdpAnnounceRequest *announce, size_t *out_len);
-char* udp_get_peers_list(const char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len);
-char* http_get_peers_list(char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len);
-char* parse_peers_from_http_body(char* body, size_t body_length, size_t *out_peers_length);
+char *udp_send_announce_request(int sockfd, const struct addrinfo *server_info, int64_t connection_id,
+                                const UdpAnnounceRequest *announce, size_t *out_len);
+
+char *udp_get_peers_list(const char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
+                         size_t *out_len);
+
+char *http_get_peers_list(char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
+                          size_t *out_len);
+
+char *parse_peers_from_http_body(char *body, size_t body_length, size_t *out_peers_length);
 
 char *get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len) {
     UriUriA announce_uri;
@@ -27,35 +36,46 @@ char *get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len) {
         return NULL;
     }
 
-    char tracker_host[256], tracker_port[10];
+    char tracker_host[256] = {0}, tracker_port[10] = {0};
 
     const int host_len = announce_uri.hostText.afterLast - announce_uri.hostText.first;
     const int port_len = announce_uri.portText.afterLast - announce_uri.portText.first;
 
     if (host_len > 0 && host_len < sizeof(tracker_host)) {
         strncpy(tracker_host, announce_uri.hostText.first, host_len);
-        tracker_host[host_len] = '\0';
-    }
-
-    if (port_len > 0 && port_len < sizeof(tracker_port)) {
-        strncpy(tracker_port, announce_uri.portText.first, port_len);
-        tracker_port[port_len] = '\0';
     }
 
     const long scheme_len = announce_uri.scheme.afterLast - announce_uri.scheme.first;
-    if (scheme_len == 3 && strncmp(announce_uri.scheme.first, "udp", scheme_len) == 0) {
-        char* udp_result = udp_get_peers_list(tracker_host, tracker_port, announce, out_len);
+
+    if (port_len > 0 && port_len < sizeof(tracker_port)) {
+        strncpy(tracker_port, announce_uri.portText.first, port_len);
+    } else {
+        if (scheme_len == 5 && strncmp(announce_uri.scheme.first, "https", 5) == 0) {
+            strcpy(tracker_port, "443");
+        } else {
+            strcpy(tracker_port, "80");
+        }
+    }
+
+    if (scheme_len == 3 && strncmp(announce_uri.scheme.first, "udp", 3) == 0) {
+        char *udp_result = udp_get_peers_list(tracker_host, tracker_port, announce, out_len);
+        uriFreeUriMembersA(&announce_uri);
         return udp_result;
     }
-    if ((scheme_len == 4 && strncmp(announce_uri.scheme.first, "http", scheme_len) == 0) || (scheme_len == 5 && strncmp(announce_uri.scheme.first, "https", scheme_len) == 0)) {
-        char* http_result = http_get_peers_list(tracker_host, tracker_port, announce, out_len);
+    if ((scheme_len == 4 && strncmp(announce_uri.scheme.first, "http", 4) == 0) ||
+        (scheme_len == 5 && strncmp(announce_uri.scheme.first, "https", 5) == 0)) {
+        char *http_result = http_get_peers_list(tracker_host, tracker_port, announce, out_len);
+        uriFreeUriMembersA(&announce_uri);
         return http_result;
     }
-    fprintf(stderr, "Failed to resolve scheme for announce address, found: %s\n", announce_uri.scheme.first);
+
+    fprintf(stderr, "Failed to resolve scheme for announce address\n");
+    uriFreeUriMembersA(&announce_uri);
     return NULL;
 }
 
-char* http_get_peers_list(char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t* out_len) {
+char *http_get_peers_list(char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
+                          size_t *out_len) {
     struct addrinfo hints = {0}, *server_info;
     memset(&hints, 0, sizeof hints);
 
@@ -66,32 +86,34 @@ char* http_get_peers_list(char* tracker_host, const char* tracker_port, const Ud
     printf("Connecting to HTTP Tracker: %s:%s\n", tracker_host, tracker_port);
 
     const int status = getaddrinfo(tracker_host, tracker_port, &hints, &server_info);
-    if (status != 0) {
-        fprintf(stderr, "DNS Lookup failed: %s\n", gai_strerror(status));
-        return NULL;
-    }
+    if (status != 0) return NULL;
 
     const int sockfd = socket(server_info->ai_family, server_info->ai_socktype, server_info->ai_protocol);
     if (sockfd < 0) {
-        perror("Socket creation failed");
         freeaddrinfo(server_info);
         return NULL;
     }
 
-    struct timeval tv;
-    tv.tv_sec = 3;
-    tv.tv_usec = 0;
-    setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    const int flags = fcntl(sockfd, F_GETFL, 0);
+    fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
 
-    if (connect(sockfd, server_info->ai_addr, server_info->ai_addrlen) < 0) {
-        perror("Connect failed or timed out after 3 seconds.");
-        close(sockfd);
-        freeaddrinfo(server_info);
-        return NULL;
-    }
-
+    connect(sockfd, server_info->ai_addr, server_info->ai_addrlen);
     freeaddrinfo(server_info);
+
+    struct pollfd pfd = {.fd = sockfd, .events = POLLOUT};
+    if (poll(&pfd, 1, 5000) <= 0) {
+        printf("[INFO] HTTP Tracker timed out. Skipping.\n");
+        close(sockfd);
+        return NULL;
+    }
+
+    int socket_error = 0;
+    socklen_t len = sizeof(socket_error);
+    getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &socket_error, &len);
+    if (socket_error != 0) {
+        close(sockfd);
+        return NULL;
+    }
 
     char encoded_hash[61];
     char encoded_peer_id[61];
@@ -100,40 +122,43 @@ char* http_get_peers_list(char* tracker_host, const char* tracker_port, const Ud
 
     char request[2048];
     snprintf(request, sizeof(request),
-        "GET /announce?info_hash=%s&peer_id=%s&port=%d&uploaded=0&downloaded=0&left=%ld&compact=1&event=started HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "Connection: close\r\n"
-        "\r\n",
-        encoded_hash, encoded_peer_id, announce->port, announce->left, tracker_host
+             "GET /announce?info_hash=%s&peer_id=%s&port=%d&uploaded=0&downloaded=0&left=%ld&compact=1&event=started HTTP/1.1\r\n"
+             "Host: %s\r\n"
+             "Connection: close\r\n\r\n",
+             encoded_hash, encoded_peer_id, announce->port, announce->left, tracker_host
     );
 
-    if (send(sockfd, request, strlen(request), 0) < 0) {
-        perror("Send failed");
-        close(sockfd);
-        return NULL;
-    }
+    send(sockfd, request, strlen(request), 0);
 
-    // TODO: dont predefine buffer size, define size based on recv
     char response_buf[16384];
     ssize_t total_received = 0;
-    ssize_t received;
 
-    while ((received = recv(sockfd, response_buf + total_received, sizeof(response_buf) - 1 - total_received, 0)) > 0) {
-        total_received += received;
-        // TODO: remove when not predefining size
-        if (total_received >= sizeof(response_buf) - 1) {
+    while (total_received < sizeof(response_buf) - 1) {
+        pfd.events = POLLIN;
+        if (poll(&pfd, 1, 5000) <= 0) {
+            printf("[INFO] HTTP Tracker timed out. Skipping.\n");
             break;
         }
+
+        const ssize_t received = recv(sockfd, response_buf + total_received, sizeof(response_buf) - 1 - total_received,
+                                      0);
+        if (received <= 0) break;
+        total_received += received;
     }
 
-    if (total_received < 0) {
-        perror("Recv failed");
+    if (total_received <= 0) {
         close(sockfd);
         return NULL;
     }
 
     response_buf[total_received] = '\0';
     close(sockfd);
+
+    if (strncmp(response_buf, "HTTP/1.1 200", 12) != 0 &&
+        strncmp(response_buf, "HTTP/1.0 200", 12) != 0) {
+        printf("[INFO] HTTP Tracker returned an error/redirect. Skipping.\n");
+        return NULL;
+    }
 
     // HTTP separates headers and body with "\r\n\r\n"
     char *body = strstr(response_buf, "\r\n\r\n");
@@ -155,7 +180,7 @@ char* http_get_peers_list(char* tracker_host, const char* tracker_port, const Ud
     return peers;
 }
 
-char* parse_peers_from_http_body(char* body, size_t body_length, size_t *out_peers_length) {
+char *parse_peers_from_http_body(char *body, const size_t body_length, size_t *out_peers_length) {
     FILE *mem_file = fmemopen(body, body_length, "rb");
     if (!mem_file) {
         perror("fmemopen failed");
@@ -177,7 +202,7 @@ char* parse_peers_from_http_body(char* body, size_t body_length, size_t *out_pee
         return NULL;
     }
 
-    BencodeNode* peers_node = getDictValue(root, "peers");
+    BencodeNode *peers_node = getDictValue(root, "peers");
 
     if (!peers_node || peers_node->type != BEN_STR) {
         fprintf(stderr, "No valid 'peers' key found in response.\n");
@@ -201,7 +226,8 @@ char* parse_peers_from_http_body(char* body, size_t body_length, size_t *out_pee
     return peers_copy;
 }
 
-char* udp_get_peers_list(const char* tracker_host, const char* tracker_port, const UdpAnnounceRequest *announce, size_t *out_len) {
+char *udp_get_peers_list(const char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
+                         size_t *out_len) {
     struct addrinfo hints = {0}, *server_info;
     memset(&hints, 0, sizeof hints);
 
@@ -250,7 +276,11 @@ char* udp_get_peers_list(const char* tracker_host, const char* tracker_port, con
                                       server_info->ai_addr, &addr_len);
 
     if (received < (ssize_t) sizeof(connect_response)) {
-        perror("Receive failed or packet too small");
+        if (received < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            perror("[ERROR] UDP Receive failed");
+        } else {
+            printf("[INFO] UDP Tracker timed out. Skipping.\n");
+        }
         close(sockfd);
         freeaddrinfo(server_info);
         return NULL;
@@ -274,15 +304,15 @@ char* udp_get_peers_list(const char* tracker_host, const char* tracker_port, con
     const int64_t connection_id = be64toh(connect_response.connection_id);
     printf("Handshake succeeded. Connection ID: %ld\n", connection_id);
 
-    char* peers = udp_send_announce_request(sockfd, server_info, connection_id, announce, out_len);
+    char *peers = udp_send_announce_request(sockfd, server_info, connection_id, announce, out_len);
 
     close(sockfd);
     freeaddrinfo(server_info);
     return peers;
 }
 
-char* udp_send_announce_request(const int sockfd, const struct addrinfo *server_info, const int64_t connection_id,
-                               const UdpAnnounceRequest *announce, size_t *out_len) {
+char *udp_send_announce_request(const int sockfd, const struct addrinfo *server_info, const int64_t connection_id,
+                                const UdpAnnounceRequest *announce, size_t *out_len) {
     UdpAnnounceRequestPacket announce_req;
     announce_req.connection_id = htobe64(connection_id);
     announce_req.action = htobe32(1); // TODO: 1 = Announce, use enum
@@ -314,11 +344,15 @@ char* udp_send_announce_request(const int sockfd, const struct addrinfo *server_
                                       server_info->ai_addr, &addr_len);
 
     if (resp_len < 20) {
-        perror("Announce receive failed or too small.");
+        if (resp_len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            perror("[ERROR] Announce receive failed");
+        } else {
+            printf("[INFO] UDP Announce timed out. Skipping.\n");
+        }
         return NULL;
     }
 
-    const UdpAnnounceResponsePacket *announce_resp = (UdpAnnounceResponsePacket*) response_buffer;
+    const UdpAnnounceResponsePacket *announce_resp = (UdpAnnounceResponsePacket *) response_buffer;
 
     if (be32toh(announce_resp->transaction_id) != transaction_id) {
         fprintf(stderr, "Announce Transaction ID mismatch\n");

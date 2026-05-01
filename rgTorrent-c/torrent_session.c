@@ -20,6 +20,25 @@ TorrentSession *ts_create(void) {
     return s;
 }
 
+#define MAX_TRACKERS 30
+
+typedef struct {
+    char url[256];
+    UdpAnnounceRequest req;
+    char *result_peers;
+    size_t result_len;
+    pthread_t thread;
+} TrackerJob;
+
+static void *tracker_worker_thread(void *arg) {
+    TrackerJob *job = arg;
+
+    job->req.announce_address = job->url;
+
+    job->result_peers = get_peers_list(&job->req, &job->result_len);
+    return NULL;
+}
+
 void ts_destroy(TorrentSession *s) {
     // TODO: signal threads to stop, then join them
     pthread_mutex_destroy(&s->lock);
@@ -112,27 +131,67 @@ static void *download_thread(void *arg) {
         .left = (long) e->size_bytes,
     };
 
-    size_t peers_len = 0;
-    char *peers = NULL;
+    TrackerJob jobs[MAX_TRACKERS];
+    int job_count = 0;
 
-    if (announceNode && announceNode->type == BEN_STR)
-        peers = get_peers_list(&req, &peers_len);
+    if (announceNode && announceNode->type == BEN_STR) {
+        snprintf(jobs[job_count].url, sizeof(jobs[0].url), "%.*s",
+                 (int)announceNode->string.length, announceNode->string.data);
+        jobs[job_count].req = req;
+        jobs[job_count].result_peers = NULL;
+        job_count++;
+    }
 
-    if (!peers) {
-        const BencodeNode *ann_list = getDictValue(root, "announce-list");
-        if (ann_list && ann_list->type == BEN_LIST) {
-            for (size_t i = 0; i < ann_list->list.length && !peers; i++) {
-                const BencodeNode *tier = ann_list->list.items[i];
-                if (!tier || tier->type != BEN_LIST) continue;
-                for (size_t j = 0; j < tier->list.length && !peers; j++) {
-                    const BencodeNode *url = tier->list.items[j];
-                    if (!url || url->type != BEN_STR) continue;
-                    req.announce_address = url->string.data;
-                    peers = get_peers_list(&req, &peers_len);
-                }
+    const BencodeNode *ann_list = getDictValue(root, "announce-list");
+    if (ann_list && ann_list->type == BEN_LIST) {
+        for (size_t i = 0; i < ann_list->list.length && job_count < MAX_TRACKERS; i++) {
+            const BencodeNode *tier = ann_list->list.items[i];
+            if (!tier || tier->type != BEN_LIST) continue;
+            for (size_t j = 0; j < tier->list.length && job_count < MAX_TRACKERS; j++) {
+                const BencodeNode *url_node = tier->list.items[j];
+                if (!url_node || url_node->type != BEN_STR) continue;
+
+                snprintf(jobs[job_count].url, sizeof(jobs[0].url), "%.*s",
+                         (int)url_node->string.length, url_node->string.data);
+                jobs[job_count].req = req;
+                jobs[job_count].result_peers = NULL;
+                job_count++;
             }
         }
     }
+
+    printf("[INFO] Spawning %d concurrent tracker requests...\n", job_count);
+
+    for (int i = 0; i < job_count; i++) {
+        pthread_create(&jobs[i].thread, NULL, tracker_worker_thread, &jobs[i]);
+    }
+
+    char *peers = NULL;
+    size_t peers_len = 0;
+
+    for (int i = 0; i < job_count; i++) {
+        pthread_join(jobs[i].thread, NULL);
+
+        if (jobs[i].result_peers) {
+            if (!peers) {
+                peers = jobs[i].result_peers;
+                peers_len = jobs[i].result_len;
+            } else {
+                free(jobs[i].result_peers);
+            }
+        }
+    }
+
+    if (!peers) {
+        fprintf(stderr, "[INFO] ALL trackers failed for %s\n", e->name);
+        pthread_mutex_lock(&e->lock);
+        e->status = TS_STATUS_ERROR;
+        pthread_mutex_unlock(&e->lock);
+        freeBencodeNode(root);
+        return NULL;
+    }
+
+    printf("[INFO] Swarm located. Trying to establish connections.\n");
 
     if (!peers) {
         fprintf(stderr, "[thread] No peers found for %s\n", e->name);

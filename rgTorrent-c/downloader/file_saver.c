@@ -81,7 +81,7 @@ EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files, const
 
         const BencodeNode *name_node = getDictValue(infoNode, "name");
         snprintf(target_files[0].filepath, sizeof(target_files[0].filepath),
-                 "%s/%s", save_path, name_node->string.data);
+                 "%s/%.*s", save_path, (int)name_node->string.length, name_node->string.data);
         target_files[0].length = single_file_length->intValue;
         target_files[0].global_start = 0;
         target_files[0].global_end = target_files[0].length;
@@ -109,17 +109,15 @@ EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files, const
             }
 
             // save path
-            snprintf(target_files[i].filepath, sizeof(target_files[i].filepath),
-                     "%s", save_path);
+            snprintf(target_files[i].filepath, sizeof(target_files[i].filepath), "%s", save_path);
             for (size_t seg = 0; seg < path_list->list.length; seg++) {
                 const BencodeNode *s = path_list->list.items[seg];
                 if (!s || s->type != BEN_STR) continue;
-                strncat(target_files[i].filepath, "/",
-                        sizeof(target_files[i].filepath)
-                            - strlen(target_files[i].filepath) - 1);
-                strncat(target_files[i].filepath, (char *)s->string.data,
-                        sizeof(target_files[i].filepath)
-                            - strlen(target_files[i].filepath) - 1);
+
+                const size_t current_len = strlen(target_files[i].filepath);
+                snprintf(target_files[i].filepath + current_len,
+                         sizeof(target_files[i].filepath) - current_len,
+                         "/%.*s", (int)s->string.length, s->string.data);
             }
 
             target_files[i].length       = length_node->intValue;

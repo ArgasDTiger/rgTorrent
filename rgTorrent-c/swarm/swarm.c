@@ -325,6 +325,7 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
         peers[i].state = PEER_STATE_DEAD;
         peers[i].inventory = NULL;
         peers[i].current_piece_assigned = -1;
+        peers[i].piece_buffer = NULL;
     }
 
     initiate_connections(poll_fds, peers, peers_list, peers_count);
