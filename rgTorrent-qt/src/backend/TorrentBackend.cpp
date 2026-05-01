@@ -18,14 +18,14 @@ static QString formatSize(const quint64 bytes) {
     return QString("%1 B").arg(bytes);
 }
 
-static QString statusToString(TsStatus s) {
+static QString statusToString(const TsStatus s) {
     switch (s) {
-        case TS_STATUS_DOWNLOADING: return QStringLiteral("Downloading");
-        case TS_STATUS_SEEDING: return QStringLiteral("Seeding");
-        case TS_STATUS_PAUSED: return QStringLiteral("Paused");
-        case TS_STATUS_ERROR: return QStringLiteral("Error");
-        case TS_STATUS_QUEUED: return QStringLiteral("Queued");
-        default: return QStringLiteral("Unknown");
+        case TS_STATUS_DOWNLOADING: return TorrentBackend::tr("Downloading");
+        case TS_STATUS_SEEDING:     return TorrentBackend::tr("Seeding");
+        case TS_STATUS_PAUSED:      return TorrentBackend::tr("Paused");
+        case TS_STATUS_ERROR:       return TorrentBackend::tr("Error");
+        case TS_STATUS_QUEUED:      return TorrentBackend::tr("Queued");
+        default:                    return TorrentBackend::tr("Unknown");
     }
 }
 
@@ -129,29 +129,29 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
 
     const BencodeNode *info = getDictValue(root, "info");
     if (info) {
-        const BencodeNode *nameNode = getDictValue(info, "name");
-        if (nameNode && nameNode->type == BEN_STR)
-            out += "Name:         " +
-                    QString::fromUtf8((char *) nameNode->string.data,
-                                      (int) nameNode->string.length) + "\n";
+        if (const BencodeNode *nameNode = getDictValue(info, "name"); nameNode && nameNode->type == BEN_STR)
+            out += tr("Name:") + "         " +
+                   QString::fromUtf8((char*)nameNode->string.data,
+                                     (int)nameNode->string.length) + "\n";
 
-        if (const BencodeNode *lenNode = getDictValue(info, "length"); lenNode && lenNode->type == BEN_INT)
-            out += "Total Size:   " + formatSize(lenNode->intValue) + "\n"; // USING FORMATTER
+        const BencodeNode *lenNode = getDictValue(info, "length");
+        if (lenNode && lenNode->type == BEN_INT)
+            out += tr("Total Size:") + "   " + formatSize(lenNode->intValue) + "\n";
 
         if (const BencodeNode *plNode = getDictValue(info, "piece length"); plNode && plNode->type == BEN_INT)
-            out += "Piece Length: " + formatSize(plNode->intValue) + "\n"; // USING FORMATTER
+            out += tr("Piece Length:") + " " + formatSize(plNode->intValue) + "\n";
 
         if (const BencodeNode *piecesNode = getDictValue(info, "pieces"); piecesNode && piecesNode->type == BEN_STR)
-            out += "Pieces:       " +
-                    QString::number(piecesNode->string.length / 20) + "\n";
+            out += tr("Pieces:") + "       " +
+                   QString::number(piecesNode->string.length / 20) + "\n";
 
         if (const BencodeNode *privNode = getDictValue(info, "private"); privNode && privNode->type == BEN_INT) {
-            out += "Private:      " + QString(privNode->intValue == 1 ? "Yes" : "No") + "\n";
+            out += tr("Private:") + "      " + (privNode->intValue == 1 ? tr("Yes") : tr("No")) + "\n";
         }
 
         const BencodeNode *files = getDictValue(info, "files");
         if (files && files->type == BEN_LIST) {
-            out += QString("\nFiles (%1):\n").arg(files->list.length);
+            out += "\n" + tr("Files (%1):").arg(files->list.length) + "\n";
             for (size_t i = 0; i < files->list.length; ++i) {
                 const BencodeNode *file = files->list.items[i];
                 const BencodeNode *pathList = getDictValue(file, "path");
@@ -175,14 +175,12 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
     }
 
     if (const BencodeNode *ann = getDictValue(root, "announce"); ann && ann->type == BEN_STR)
-        out += "\nPrimary Tracker: " +
-                QString::fromUtf8((char *) ann->string.data,
-                                  (int) ann->string.length) + "\n";
+        out += "\n" + tr("Primary Tracker:") + " " +
+               QString::fromUtf8(reinterpret_cast<char *>(ann->string.data),
+                                 static_cast<int>(ann->string.length)) + "\n";
 
-    // Fixed Tracker Tiers to catch all backups
-    const BencodeNode *annList = getDictValue(root, "announce-list");
-    if (annList && annList->type == BEN_LIST) {
-        out += "Backup Trackers:\n";
+    if (const BencodeNode *annList = getDictValue(root, "announce-list"); annList && annList->type == BEN_LIST) {
+        out += tr("Backup Trackers:") + "\n";
         for (size_t i = 0; i < annList->list.length; ++i) {
             if (const BencodeNode *tier = annList->list.items[i]; tier->type == BEN_LIST) {
                 for (size_t j = 0; j < tier->list.length; ++j) {
@@ -195,21 +193,20 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
         }
     }
 
-    if (const BencodeNode *creationDate = getDictValue(root, "creation date");
-        creationDate && creationDate->type == BEN_INT) {
+    if (const BencodeNode *creationDate = getDictValue(root, "creation date"); creationDate && creationDate->type == BEN_INT) {
         const QDateTime dt = QDateTime::fromSecsSinceEpoch(creationDate->intValue);
-        out += "\nCreated on:   " + dt.toString("yyyy-MM-dd HH:mm:ss") + "\n";
+        out += "\n" + tr("Created on:") + "   " + dt.toString("yyyy-MM-dd HH:mm:ss") + "\n";
     }
 
     if (const BencodeNode *comment = getDictValue(root, "comment"); comment && comment->type == BEN_STR)
-        out += "Comment:      " +
-                QString::fromUtf8(reinterpret_cast<char *>(comment->string.data),
-                                  static_cast<int>(comment->string.length)) + "\n";
+        out += tr("Comment:") + "      " +
+               QString::fromUtf8(reinterpret_cast<char *>(comment->string.data),
+                                 static_cast<int>(comment->string.length)) + "\n";
 
     if (const BencodeNode *createdBy = getDictValue(root, "created by"); createdBy && createdBy->type == BEN_STR)
-        out += "Created by:   " +
-                QString::fromUtf8(reinterpret_cast<char *>(createdBy->string.data),
-                                  static_cast<int>(createdBy->string.length)) + "\n";
+        out += tr("Created by:") + "   " +
+               QString::fromUtf8(reinterpret_cast<char *>(createdBy->string.data),
+                                 static_cast<int>(createdBy->string.length)) + "\n";
 
     freeBencodeNode(root);
     return out;

@@ -77,7 +77,9 @@ void TorrentDetailsPanel::addRow(QWidget *parent, const int row,
 {
     auto *grid = qobject_cast<QGridLayout*>(parent->layout());
     auto *kLbl = new QLabel(key, parent);
-    kLbl->setObjectName("detailKey");
+
+    kLbl->setObjectName(QString("key_%1").arg(row));
+
     *valueOut = new QLabel(QStringLiteral("—"), parent);
     (*valueOut)->setObjectName("detailValue");
     (*valueOut)->setWordWrap(true);
@@ -87,9 +89,11 @@ void TorrentDetailsPanel::addRow(QWidget *parent, const int row,
 
 void TorrentDetailsPanel::setTorrent(const TorrentItem &item) const {
     m_lName->setText(item.name.isEmpty() ? QStringLiteral("—") : item.name);
+
     m_lSize->setText(item.sizeBytes
-        ? QString("%1 bytes").arg(item.sizeBytes)
+        ? tr("%1 bytes").arg(item.sizeBytes)
         : QStringLiteral("—"));
+
     m_lStatus->setText(item.status);
     m_lSeeds->setText(QString::number(item.seeds));
     m_lPeers->setText(QString::number(item.peers));
@@ -109,4 +113,16 @@ void TorrentDetailsPanel::clear()
         l->setText(QStringLiteral("—"));
     m_progressBar->setValue(0);
     m_lProgress->setText("0%");
+}
+
+void TorrentDetailsPanel::retranslateUi() const {
+    if (const auto title = findChild<QLabel*>("sectionLabel")) title->setText(tr("TORRENT DETAILS"));
+    if (const auto k0 = findChild<QLabel*>("key_0")) k0->setText(tr("Name"));
+    if (const auto k1 = findChild<QLabel*>("key_1")) k1->setText(tr("Size"));
+    if (const auto k2 = findChild<QLabel*>("key_2")) k2->setText(tr("Status"));
+    if (const auto k3 = findChild<QLabel*>("key_3")) k3->setText(tr("Seeds"));
+    if (const auto k4 = findChild<QLabel*>("key_4")) k4->setText(tr("Peers"));
+    if (const auto k5 = findChild<QLabel*>("key_5")) k5->setText(tr("Seeding"));
+    if (const auto k6 = findChild<QLabel*>("key_6")) k6->setText(tr("File"));
+    if (const auto kp = findChild<QLabel*>("detailKey")) kp->setText(tr("Progress"));
 }

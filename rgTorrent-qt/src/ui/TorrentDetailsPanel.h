@@ -12,6 +12,7 @@ public:
     explicit TorrentDetailsPanel(QWidget *parent = nullptr);
     void setTorrent(const TorrentItem &item) const;
     void clear();
+    void retranslateUi() const;
 
 private:
     static void addRow(QWidget *grid, int row, const QString &key, QLabel **valueOut);

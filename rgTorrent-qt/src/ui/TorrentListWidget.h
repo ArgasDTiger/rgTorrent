@@ -17,6 +17,7 @@ public:
     void setFilter(const QString &text);
 
     [[nodiscard]] int selectedId() const;
+    void retranslateUi() const;
 
 signals:
     void selectionChanged(const TorrentItem &item);

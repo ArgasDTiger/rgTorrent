@@ -21,46 +21,55 @@
 #include <QSettings>
 
 MainWindow::MainWindow(TorrentBackend *backend, ThemeManager *theme, QWidget *parent)
-    : QMainWindow(parent), m_backend(backend), m_theme(theme)
-{
+    : QMainWindow(parent), m_backend(backend), m_theme(theme) {
     m_translator = new QTranslator(this);
+
+    const QSettings s("rgTorrent", "rgTorrent");
+    const int lang = s.value("language", 0).toInt();
+
+    if (const QString langCode = lang == 1 ? "uk" : "en"; m_translator->load(
+        QString(":/i18n/rgTorrent_%1").arg(langCode))) {
+        qApp->installTranslator(m_translator);
+    }
+
     buildUi();
     retranslateUi();
 
     connect(m_backend, &TorrentBackend::torrentsChanged,
             m_listWidget, &TorrentListWidget::setTorrents);
     connect(m_backend, &TorrentBackend::torrentsChanged,
-        this, [this](const QList<TorrentItem> &items) {
-            const int id = m_listWidget->selectedId();
-            if (id == -1) return;
-            for (const auto &t : items)
-                if (t.id == id) { m_detailPanel->setTorrent(t); return; }
-        });
+            this, [this](const QList<TorrentItem> &items) {
+                const int id = m_listWidget->selectedId();
+                if (id == -1) return;
+                for (const auto &t: items)
+                    if (t.id == id) {
+                        m_detailPanel->setTorrent(t);
+                        return;
+                    }
+            });
     connect(m_backend, &TorrentBackend::errorOccurred,
-            this, [this](const QString &msg){
+            this, [this](const QString &msg) {
                 statusBar()->showMessage(msg, 4000);
             });
 
     m_listWidget->setTorrents(m_backend->torrents());
 
-    const QSettings s("rgTorrent", "rgTorrent");
-    const int lang = s.value("language", 0).toInt();
+    m_langCombo->blockSignals(true);
     m_langCombo->setCurrentIndex(lang);
-    onLanguageChanged(lang);
+    m_langCombo->blockSignals(false);
 
     restoreGeometry(s.value("geometry").toByteArray());
     restoreState(s.value("windowState").toByteArray());
 }
 
-void MainWindow::buildUi()
-{
+void MainWindow::buildUi() {
     setMinimumSize(900, 560);
     resize(1200, 700);
 
     auto *central = new QWidget(this);
     setCentralWidget(central);
     auto *mainLay = new QVBoxLayout(central);
-    mainLay->setContentsMargins(0,0,0,0);
+    mainLay->setContentsMargins(0, 0, 0, 0);
     mainLay->setSpacing(0);
 
     auto *topBar = new QFrame(central);
@@ -72,7 +81,7 @@ void MainWindow::buildUi()
     m_splitter = new QSplitter(Qt::Horizontal, central);
     m_splitter->setHandleWidth(1);
 
-    m_listWidget  = new TorrentListWidget(m_splitter);
+    m_listWidget = new TorrentListWidget(m_splitter);
     m_detailPanel = new TorrentDetailsPanel(m_splitter);
 
     m_splitter->addWidget(m_listWidget);
@@ -86,28 +95,27 @@ void MainWindow::buildUi()
     statusBar()->showMessage(tr("Ready"));
 
     connect(m_listWidget, &TorrentListWidget::selectionChanged,
-            this, [this](const TorrentItem &t){ m_detailPanel->setTorrent(t); });
+            this, [this](const TorrentItem &t) { m_detailPanel->setTorrent(t); });
 
     connect(m_searchEdit, &QLineEdit::textChanged,
             m_listWidget, &TorrentListWidget::setFilter);
 
-    connect(m_addBtn,     &QPushButton::clicked, this, &MainWindow::onAddTorrent);
-    connect(m_removeBtn,  &QPushButton::clicked, this, &MainWindow::onRemoveTorrent);
-    connect(m_createBtn,  &QPushButton::clicked, this, &MainWindow::onCreateTorrent);
+    connect(m_addBtn, &QPushButton::clicked, this, &MainWindow::onAddTorrent);
+    connect(m_removeBtn, &QPushButton::clicked, this, &MainWindow::onRemoveTorrent);
+    connect(m_createBtn, &QPushButton::clicked, this, &MainWindow::onCreateTorrent);
     connect(m_contentBtn, &QPushButton::clicked, this, &MainWindow::onShowContent);
-    connect(m_themeBtn,   &QPushButton::clicked, this, &MainWindow::onThemeToggled);
+    connect(m_themeBtn, &QPushButton::clicked, this, &MainWindow::onThemeToggled);
 
     connect(m_langCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onLanguageChanged);
 
-    connect(m_theme, &ThemeManager::themeChanged, this, [this](ThemeManager::Theme t){
+    connect(m_theme, &ThemeManager::themeChanged, this, [this](ThemeManager::Theme t) {
         m_themeBtn->setText(t == ThemeManager::Dark ? "☀" : "🌑");
     });
     m_themeBtn->setText("☀");
 }
 
-void MainWindow::buildTopBar(QWidget *bar)
-{
+void MainWindow::buildTopBar(QWidget *bar) {
     auto *lay = new QHBoxLayout(bar);
     lay->setContentsMargins(16, 0, 16, 0);
     lay->setSpacing(10);
@@ -136,7 +144,7 @@ void MainWindow::buildTopBar(QWidget *bar)
 
     m_contentBtn = new QPushButton(tr("🔍 Contents"), bar);
 
-    for (auto *b : {m_addBtn, m_removeBtn, m_createBtn, m_contentBtn}) {
+    for (auto *b: {m_addBtn, m_removeBtn, m_createBtn, m_contentBtn}) {
         b->setFixedHeight(32);
         lay->addWidget(b);
     }
@@ -156,8 +164,7 @@ void MainWindow::buildTopBar(QWidget *bar)
     lay->addWidget(m_themeBtn);
 }
 
-void MainWindow::retranslateUi()
-{
+void MainWindow::retranslateUi() {
     setWindowTitle(tr("rgTorrent"));
     m_searchEdit->setPlaceholderText(tr("Filter torrents…"));
     m_addBtn->setText(tr("＋ Add"));
@@ -167,8 +174,7 @@ void MainWindow::retranslateUi()
     statusBar()->showMessage(tr("Ready"));
 }
 
-void MainWindow::onAddTorrent()
-{
+void MainWindow::onAddTorrent() {
     const QString torrentFile = QFileDialog::getOpenFileName(
         this, tr("Open torrent file"), QString(),
         tr("Torrent files (*.torrent);;All files (*)"));
@@ -182,8 +188,7 @@ void MainWindow::onAddTorrent()
     statusBar()->showMessage(tr("Torrent added: %1").arg(torrentFile), 3000);
 }
 
-void MainWindow::onRemoveTorrent()
-{
+void MainWindow::onRemoveTorrent() {
     const int id = m_listWidget->selectedId();
     if (id == -1) {
         statusBar()->showMessage(tr("No torrent selected."), 2000);
@@ -200,8 +205,7 @@ void MainWindow::onRemoveTorrent()
     statusBar()->showMessage(tr("Torrent removed."), 2000);
 }
 
-void MainWindow::onCreateTorrent()
-{
+void MainWindow::onCreateTorrent() {
     CreateTorrentDialog dlg(this);
     if (dlg.exec() != QDialog::Accepted) return;
     if (dlg.sourceDir().isEmpty() || dlg.outputPath().isEmpty()) return;
@@ -209,8 +213,7 @@ void MainWindow::onCreateTorrent()
     statusBar()->showMessage(tr("Torrent created: %1").arg(dlg.outputPath()), 3000);
 }
 
-void MainWindow::onShowContent()
-{
+void MainWindow::onShowContent() {
     const QString torrentFile = QFileDialog::getOpenFileName(
         this, tr("Open torrent file"), QString(),
         tr("Torrent files (*.torrent);;All files (*)"));
@@ -222,27 +225,27 @@ void MainWindow::onShowContent()
 
 void MainWindow::onThemeToggled() const {
     m_theme->toggleTheme();
-    QSettings("rgTorrent","rgTorrent").setValue(
+    QSettings("rgTorrent", "rgTorrent").setValue(
         "theme", m_theme->currentTheme() == ThemeManager::Dark ? "dark" : "light");
 }
 
-void MainWindow::onLanguageChanged(const int index)
-{
+void MainWindow::onLanguageChanged(const int index) {
     const QString lang = m_langCombo->itemData(index).toString();
-    QSettings("rgTorrent","rgTorrent").setValue("language", index);
+    QSettings("rgTorrent", "rgTorrent").setValue("language", index);
 
     qApp->removeTranslator(m_translator);
-    if (m_translator->load(
-        QString(":/i18n/rgTorrent_%1").arg(lang)))
+    if (m_translator->load(QString(":/i18n/rgTorrent_%1").arg(lang))) {
         qApp->installTranslator(m_translator);
+    }
 
     retranslateUi();
+    m_listWidget->retranslateUi();
+    m_detailPanel->retranslateUi();
 }
 
-void MainWindow::closeEvent(QCloseEvent *ev)
-{
+void MainWindow::closeEvent(QCloseEvent *ev) {
     QSettings s("rgTorrent", "rgTorrent");
-    s.setValue("geometry",    saveGeometry());
+    s.setValue("geometry", saveGeometry());
     s.setValue("windowState", saveState());
     m_backend->saveSession();
     QMainWindow::closeEvent(ev);
