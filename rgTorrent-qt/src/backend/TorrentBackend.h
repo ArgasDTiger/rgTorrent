@@ -15,6 +15,9 @@ public:
     explicit TorrentBackend(QObject *parent = nullptr);
     ~TorrentBackend() override;
 
+    void loadSession() const;
+    void saveSession() const;
+
     [[nodiscard]] QList<TorrentItem> torrents() const;
 
     static QString torrentContents(const QString &torrentPath);

@@ -1,5 +1,6 @@
 #include "TorrentBackend.h"
 #include <QFileInfo>
+#include <QSettings>
 
 extern "C" {
 #include "torrent_session.h"
@@ -211,4 +212,32 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
 
     freeBencodeNode(root);
     return out;
+}
+
+void TorrentBackend::saveSession() const {
+    QSettings settings("rgTorrent", "rgTorrent");
+    QStringList activeTorrents;
+
+    const int count = ts_torrent_count(m_session);
+    for (int i = 0; i < count; ++i) {
+        QString tPath = QString::fromUtf8(ts_torrent_file_path(m_session, i));
+        QString sPath = QString::fromUtf8(ts_torrent_save_path(m_session, i));
+
+        activeTorrents.append(tPath + "|" + sPath);
+    }
+
+    settings.setValue("session/torrents", activeTorrents);
+}
+
+void TorrentBackend::loadSession() const {
+    const QSettings settings("rgTorrent", "rgTorrent");
+    QStringList activeTorrents = settings.value("session/torrents").toStringList();
+
+    for (const QString &entry : activeTorrents) {
+        if (QStringList parts = entry.split("|"); parts.size() == 2) {
+            ts_add_torrent(m_session,
+                           parts[0].toUtf8().constData(),
+                           parts[1].toUtf8().constData());
+        }
+    }
 }

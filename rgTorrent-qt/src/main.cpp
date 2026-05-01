@@ -14,6 +14,8 @@ int main(int argc, char *argv[])
     auto *theme = new ThemeManager(&app);
     auto *backend = new TorrentBackend;
 
+    backend->loadSession();
+
     const QSettings s("rgTorrent", "rgTorrent");
     const QString savedTheme = s.value("theme", "dark").toString();
     theme->setTheme(savedTheme == "light"

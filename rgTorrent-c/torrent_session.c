@@ -218,7 +218,39 @@ static void *download_thread(void *arg) {
         return NULL;
     }
 
+    printf("[INFO] Verifying existing files for %s...\n", e->name);
+
     const unsigned char *pieces_hashes = pieces_node->string.data;
+    unsigned char *verify_buffer = malloc(e->piece_length);
+    int recovered_pieces = 0;
+
+    for (size_t p = 0; p < e->total_pieces; p++) {
+        size_t current_piece_size = e->piece_length;
+        if (p == e->total_pieces - 1) {
+            const size_t rem = e->size_bytes % e->piece_length;
+            if (rem != 0) current_piece_size = rem;
+        }
+
+        if (read_piece_from_disk(p, current_piece_size, verify_buffer, end_files, (int)num_files)) {
+            unsigned char hash[SHA_DIGEST_LENGTH];
+            SHA1(verify_buffer, current_piece_size, hash);
+            const unsigned char *expected_hash = pieces_hashes + (p * SHA_DIGEST_LENGTH);
+
+            if (memcmp(hash, expected_hash, SHA_DIGEST_LENGTH) == 0) {
+                e->piece_states[p] = PIECE_DONE;
+                recovered_pieces++;
+            }
+        }
+    }
+    free(verify_buffer);
+
+    pthread_mutex_lock(&e->lock);
+    e->pieces_completed = recovered_pieces;
+    e->progress = (double)e->pieces_completed / (double)e->total_pieces;
+    pthread_mutex_unlock(&e->lock);
+
+    printf("[INFO] Verification complete. Recovered %d / %ld pieces.\n", recovered_pieces, e->total_pieces);
+    start_swarm(e, (unsigned char *) peers, peers_count, pieces_hashes, end_files, (int) num_files);
 
     start_swarm(e, (unsigned char *) peers, peers_count, pieces_hashes, end_files, (int) num_files);
 

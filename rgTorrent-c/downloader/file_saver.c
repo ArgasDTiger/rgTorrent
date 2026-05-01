@@ -131,3 +131,33 @@ EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files, const
     fprintf(stderr, "Invalid files dictionary in torrent.\n");
     return NULL;
 }
+
+bool read_piece_from_disk(const uint32_t piece_index, const size_t piece_length, unsigned char *out_buffer,
+                          const EndFile *end_files, const int num_files) {
+    const size_t piece_global_start = piece_index * piece_length;
+    const size_t piece_global_end = piece_global_start + piece_length;
+    size_t bytes_read = 0;
+
+    for (int i = 0; i < num_files; i++) {
+        const EndFile *file = &end_files[i];
+
+        if (piece_global_end <= file->global_start || piece_global_start >= file->global_end) continue;
+
+        const size_t overlap_end = piece_global_end < file->global_end ? piece_global_end : file->global_end;
+        const size_t overlap_start = piece_global_start > file->global_start ? piece_global_start : file->global_start;
+        const size_t read_length = overlap_end - overlap_start;
+        const size_t local_file_offset = overlap_start - file->global_start;
+
+        FILE *f = fopen(file->filepath, "rb");
+        if (!f) return false;
+
+        fseek(f, local_file_offset, SEEK_SET);
+        const size_t actual_read = fread(out_buffer + bytes_read, 1, read_length, f);
+        fclose(f);
+
+        if (actual_read != read_length) return false;
+        bytes_read += read_length;
+        if (bytes_read >= piece_length) break;
+    }
+    return bytes_read > 0;
+}

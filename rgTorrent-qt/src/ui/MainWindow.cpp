@@ -244,5 +244,6 @@ void MainWindow::closeEvent(QCloseEvent *ev)
     QSettings s("rgTorrent", "rgTorrent");
     s.setValue("geometry",    saveGeometry());
     s.setValue("windowState", saveState());
+    m_backend->saveSession();
     QMainWindow::closeEvent(ev);
 }
