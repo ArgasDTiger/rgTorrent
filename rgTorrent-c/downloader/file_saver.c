@@ -132,10 +132,10 @@ EndFile *fill_target_files(const BencodeNode *infoNode, size_t *num_files, const
     return NULL;
 }
 
-bool read_piece_from_disk(const uint32_t piece_index, const size_t piece_length, unsigned char *out_buffer,
+bool read_piece_from_disk(const uint32_t piece_index, const size_t nominal_piece_length, const size_t actual_piece_length, unsigned char *out_buffer,
                           const EndFile *end_files, const int num_files) {
-    const size_t piece_global_start = piece_index * piece_length;
-    const size_t piece_global_end = piece_global_start + piece_length;
+    const size_t piece_global_start = piece_index * nominal_piece_length;
+    const size_t piece_global_end = piece_global_start + actual_piece_length;
     size_t bytes_read = 0;
 
     for (int i = 0; i < num_files; i++) {
@@ -157,7 +157,8 @@ bool read_piece_from_disk(const uint32_t piece_index, const size_t piece_length,
 
         if (actual_read != read_length) return false;
         bytes_read += read_length;
-        if (bytes_read >= piece_length) break;
+
+        if (bytes_read >= actual_piece_length) break;
     }
     return bytes_read > 0;
 }

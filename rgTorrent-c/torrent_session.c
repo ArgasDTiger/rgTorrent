@@ -231,7 +231,7 @@ static void *download_thread(void *arg) {
             if (rem != 0) current_piece_size = rem;
         }
 
-        if (read_piece_from_disk(p, current_piece_size, verify_buffer, end_files, (int)num_files)) {
+        if (read_piece_from_disk(p, e->piece_length, current_piece_size, verify_buffer, end_files, (int)num_files)) {
             unsigned char hash[SHA_DIGEST_LENGTH];
             SHA1(verify_buffer, current_piece_size, hash);
             const unsigned char *expected_hash = pieces_hashes + (p * SHA_DIGEST_LENGTH);
@@ -247,10 +247,14 @@ static void *download_thread(void *arg) {
     pthread_mutex_lock(&e->lock);
     e->pieces_completed = recovered_pieces;
     e->progress = (double)e->pieces_completed / (double)e->total_pieces;
+
+    if (e->pieces_completed == e->total_pieces) {
+        e->status = TS_STATUS_SEEDING;
+        e->seeding = true;
+    }
     pthread_mutex_unlock(&e->lock);
 
     printf("[INFO] Verification complete. Recovered %d / %ld pieces.\n", recovered_pieces, e->total_pieces);
-    start_swarm(e, (unsigned char *) peers, peers_count, pieces_hashes, end_files, (int) num_files);
 
     start_swarm(e, (unsigned char *) peers, peers_count, pieces_hashes, end_files, (int) num_files);
 
@@ -303,9 +307,24 @@ int ts_add_torrent(TorrentSession *s,
                     snprintf(e->name, sizeof e->name, "%.*s",
                              (int) nameNode->string.length,
                              nameNode->string.data);
+
                 const BencodeNode *lenNode = getDictValue(info, "length");
-                if (lenNode && lenNode->type == BEN_INT)
+                if (lenNode && lenNode->type == BEN_INT) {
                     e->size_bytes = (uint64_t) lenNode->intValue;
+                } else {
+                    const BencodeNode *files_list = getDictValue(info, "files");
+                    if (files_list && files_list->type == BEN_LIST) {
+                        uint64_t total_size = 0;
+                        for (size_t i = 0; i < files_list->list.length; i++) {
+                            const BencodeNode *file_dict = files_list->list.items[i];
+                            const BencodeNode *flen = getDictValue(file_dict, "length");
+                            if (flen && flen->type == BEN_INT) {
+                                total_size += flen->intValue;
+                            }
+                        }
+                        e->size_bytes = total_size;
+                    }
+                }
             }
         }
         fclose(ctx.file);
