@@ -172,9 +172,9 @@ void TorrentListWidget::rebuildTable() {
         m_table->setItem(row, COL_STATUS, statusItem);
 
         m_table->setItem(row, COL_SEEDS,
-                         new QTableWidgetItem(QString::number(t.seeds)));
+                         new QTableWidgetItem(QString("%1 (%2)").arg(t.seeds).arg(t.totalSeeds)));
         m_table->setItem(row, COL_PEERS,
-                         new QTableWidgetItem(QString::number(t.peers)));
+                         new QTableWidgetItem(QString("%1 (%2)").arg(t.peers).arg(t.totalPeers)));
 
         auto *progItem = new QTableWidgetItem();
         progItem->setData(Qt::UserRole, t.progress);

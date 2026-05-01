@@ -9,6 +9,7 @@
 #ifdef __cplusplus
 extern "C" {
 
+
 #endif
 
 #define TS_MAX_TORRENTS 256
@@ -30,7 +31,9 @@ typedef struct TorrentEntry {
     uint64_t size_bytes;
     double progress;
     int seeds;
+    int total_seeds;
     int peers_count;
+    int total_peers;
     bool seeding;
     TsStatus status;
     pthread_t thread;
@@ -95,6 +98,10 @@ const char *ts_torrent_file_path(const TorrentSession *s, int index);
 int ts_create_torrent(const char *source_dir,
                       const char *output_path,
                       const char *tracker_url);
+
+int ts_torrent_total_seeds(const TorrentSession *s, int index);
+
+int ts_torrent_total_peers(const TorrentSession *s, int index);
 
 #ifdef __cplusplus
 }

@@ -78,10 +78,15 @@ static void drop_peer(TorrentEntry *e, struct pollfd *pfd, PeerConnection *peer)
         pthread_mutex_lock(&e->lock);
         e->piece_states[peer->current_piece_assigned] = PIECE_MISSING;
         pthread_mutex_unlock(&e->lock);
+        peer->current_piece_assigned = -1;
     }
     if (peer->piece_buffer) {
         free(peer->piece_buffer);
         peer->piece_buffer = NULL;
+    }
+    if (peer->inventory) {
+        free(peer->inventory);
+        peer->inventory = NULL;
     }
     if (pfd->fd != -1) {
         close(pfd->fd);
@@ -275,7 +280,8 @@ static bool handle_downloading(TorrentEntry *e, const struct pollfd *pfd, PeerCo
 
             request_block(pfd->fd, next_piece, 0, next_block_size);
         } else {
-            return false;
+            peer->current_piece_assigned = -1;
+            return true;
         }
     } else {
         uint32_t next_block_size = DEFAULT_BLOCK_SIZE;
@@ -339,12 +345,37 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
 
     while (true) {
         pthread_mutex_lock(&e->lock);
-        const bool is_done = (e->pieces_completed == e->total_pieces);
+        const bool should_exit = (e->status == TS_STATUS_PAUSED || e->status == TS_STATUS_ERROR);
         pthread_mutex_unlock(&e->lock);
-        if (is_done) break;
+        if (should_exit) break;
 
         const int activity = poll(poll_fds, MAX_PEERS, 1000);
         if (activity < 0) break;
+
+        int live_seeds = 0;
+        int live_peers = 0;
+
+        for (int i = 0; i < MAX_PEERS; i++) {
+            if (peers[i].state >= PEER_STATE_WAITING_UNCHOKE && peers[i].inventory != NULL) {
+                bool is_seed = true;
+
+                for (size_t p = 0; p < e->total_pieces; p++) {
+                    if (!peers[i].inventory[p]) {
+                        is_seed = false;
+                        break;
+                    }
+                }
+
+                if (is_seed) live_seeds++;
+                else live_peers++;
+            }
+        }
+
+        pthread_mutex_lock(&e->lock);
+        e->seeds = live_seeds;
+        e->peers_count = live_peers;
+        pthread_mutex_unlock(&e->lock);
+
         if (activity == 0) continue;
 
         for (int i = 0; i < MAX_PEERS; i++) {

@@ -53,8 +53,10 @@ void TorrentBackend::poll() {
         t.name = QString::fromUtf8(ts_torrent_name(m_session, i));
         t.sizeBytes = ts_torrent_size(m_session, i);
         t.status = statusToString(ts_torrent_status(m_session, i));
-        t.seeds = ts_torrent_seeds(m_session, i);
-        t.peers = ts_torrent_peers(m_session, i);
+        t.seeds       = ts_torrent_seeds(m_session, i);
+        t.totalSeeds  = ts_torrent_total_seeds(m_session, i);
+        t.peers       = ts_torrent_peers(m_session, i);
+        t.totalPeers  = ts_torrent_total_peers(m_session, i);
         t.progress = ts_torrent_progress(m_session, i);
         t.seeding = ts_torrent_is_seeding(m_session, i);
         t.savePath = QString::fromUtf8(ts_torrent_save_path(m_session, i));

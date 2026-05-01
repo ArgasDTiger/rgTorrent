@@ -18,17 +18,19 @@
 #define PROTOCOL_ID 0x41727101980LL
 
 char *udp_send_announce_request(int sockfd, const struct addrinfo *server_info, int64_t connection_id,
-                                const UdpAnnounceRequest *announce, size_t *out_len);
+                                const UdpAnnounceRequest *announce, size_t *out_len, int *out_seeders,
+                                int *out_leechers);
 
 char *udp_get_peers_list(const char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
-                         size_t *out_len);
+                         size_t *out_len, int *out_seeders, int *out_leechers);
 
 char *http_get_peers_list(char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
-                          size_t *out_len);
+                          size_t *out_len, int *out_seeders, int *out_leechers);
 
-char *parse_peers_from_http_body(char *body, size_t body_length, size_t *out_peers_length);
+char *parse_peers_from_http_body(char *body, size_t body_length, size_t *out_peers_length, int *out_seeders,
+                                 int *out_leechers);
 
-char *get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len) {
+char *get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len, int *out_seeders, int *out_leechers) {
     UriUriA announce_uri;
     const char *errorPos;
     if (uriParseSingleUriA(&announce_uri, announce->announce_address, &errorPos) != URI_SUCCESS) {
@@ -58,13 +60,14 @@ char *get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len) {
     }
 
     if (scheme_len == 3 && strncmp(announce_uri.scheme.first, "udp", 3) == 0) {
-        char *udp_result = udp_get_peers_list(tracker_host, tracker_port, announce, out_len);
+        char *udp_result = udp_get_peers_list(tracker_host, tracker_port, announce, out_len, out_seeders, out_leechers);
         uriFreeUriMembersA(&announce_uri);
         return udp_result;
     }
     if ((scheme_len == 4 && strncmp(announce_uri.scheme.first, "http", 4) == 0) ||
         (scheme_len == 5 && strncmp(announce_uri.scheme.first, "https", 5) == 0)) {
-        char *http_result = http_get_peers_list(tracker_host, tracker_port, announce, out_len);
+        char *http_result = http_get_peers_list(tracker_host, tracker_port, announce, out_len, out_seeders,
+                                                out_leechers);
         uriFreeUriMembersA(&announce_uri);
         return http_result;
     }
@@ -75,7 +78,7 @@ char *get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len) {
 }
 
 char *http_get_peers_list(char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
-                          size_t *out_len) {
+                          size_t *out_len, int *out_seeders, int *out_leechers) {
     struct addrinfo hints = {0}, *server_info;
     memset(&hints, 0, sizeof hints);
 
@@ -176,11 +179,12 @@ char *http_get_peers_list(char *tracker_host, const char *tracker_port, const Ud
     const long body_offset = body - response_buf;
     const size_t body_length = total_received - body_offset;
 
-    char *peers = parse_peers_from_http_body(body, body_length, out_len);
+    char *peers = parse_peers_from_http_body(body, body_length, out_len, out_seeders, out_leechers);
     return peers;
 }
 
-char *parse_peers_from_http_body(char *body, const size_t body_length, size_t *out_peers_length) {
+char *parse_peers_from_http_body(char *body, const size_t body_length, size_t *out_peers_length, int *out_seeders,
+                                 int *out_leechers) {
     FILE *mem_file = fmemopen(body, body_length, "rb");
     if (!mem_file) {
         perror("fmemopen failed");
@@ -221,13 +225,20 @@ char *parse_peers_from_http_body(char *body, const size_t body_length, size_t *o
         }
     }
 
+    if (out_seeders && out_leechers) {
+        const BencodeNode *complete = getDictValue(root, "complete");
+        const BencodeNode *incomplete = getDictValue(root, "incomplete");
+        *out_seeders = (complete && complete->type == BEN_INT) ? complete->intValue : 0;
+        *out_leechers = (incomplete && incomplete->type == BEN_INT) ? incomplete->intValue : 0;
+    }
+
     freeBencodeNode(root);
     fclose(mem_file);
     return peers_copy;
 }
 
 char *udp_get_peers_list(const char *tracker_host, const char *tracker_port, const UdpAnnounceRequest *announce,
-                         size_t *out_len) {
+                         size_t *out_len, int *out_seeders, int *out_leechers) {
     struct addrinfo hints = {0}, *server_info;
     memset(&hints, 0, sizeof hints);
 
@@ -304,7 +315,8 @@ char *udp_get_peers_list(const char *tracker_host, const char *tracker_port, con
     const int64_t connection_id = be64toh(connect_response.connection_id);
     printf("Handshake succeeded. Connection ID: %ld\n", connection_id);
 
-    char *peers = udp_send_announce_request(sockfd, server_info, connection_id, announce, out_len);
+    char *peers = udp_send_announce_request(sockfd, server_info, connection_id, announce, out_len, out_seeders,
+                                            out_leechers);
 
     close(sockfd);
     freeaddrinfo(server_info);
@@ -312,7 +324,8 @@ char *udp_get_peers_list(const char *tracker_host, const char *tracker_port, con
 }
 
 char *udp_send_announce_request(const int sockfd, const struct addrinfo *server_info, const int64_t connection_id,
-                                const UdpAnnounceRequest *announce, size_t *out_len) {
+                                const UdpAnnounceRequest *announce, size_t *out_len, int *out_seeders,
+                                int *out_leechers) {
     UdpAnnounceRequestPacket announce_req;
     announce_req.connection_id = htobe64(connection_id);
     announce_req.action = htobe32(1); // TODO: 1 = Announce, use enum
@@ -353,6 +366,14 @@ char *udp_send_announce_request(const int sockfd, const struct addrinfo *server_
     }
 
     const UdpAnnounceResponsePacket *announce_resp = (UdpAnnounceResponsePacket *) response_buffer;
+
+    if (out_seeders && out_leechers) {
+        uint32_t leechers, seeders;
+        memcpy(&leechers, response_buffer + 12, 4);
+        memcpy(&seeders, response_buffer + 16, 4);
+        *out_leechers = be32toh(leechers);
+        *out_seeders = be32toh(seeders);
+    }
 
     if (be32toh(announce_resp->transaction_id) != transaction_id) {
         fprintf(stderr, "Announce Transaction ID mismatch\n");

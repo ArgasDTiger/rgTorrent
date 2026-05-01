@@ -95,8 +95,8 @@ void TorrentDetailsPanel::setTorrent(const TorrentItem &item) const {
         : QStringLiteral("—"));
 
     m_lStatus->setText(item.status);
-    m_lSeeds->setText(QString::number(item.seeds));
-    m_lPeers->setText(QString::number(item.peers));
+    m_lSeeds->setText(QString("%1 (%2)").arg(item.seeds).arg(item.totalSeeds));
+    m_lPeers->setText(QString("%1 (%2)").arg(item.peers).arg(item.totalPeers));
     m_lSeeding->setText(item.seeding ? tr("Yes") : tr("No"));
     m_lPath->setText(item.torrentPath.isEmpty()
         ? QStringLiteral("—") : item.torrentPath);

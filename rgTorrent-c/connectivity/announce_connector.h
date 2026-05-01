@@ -59,5 +59,5 @@ enum NormalAnnounce{
     AnnounceResponse = 3,
 };
 
-char* get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len);
+char* get_peers_list(const UdpAnnounceRequest *announce, size_t *out_len, int *out_seeders, int *out_leechers);
 #endif // ANNOUNCE_CONNECTOR_H

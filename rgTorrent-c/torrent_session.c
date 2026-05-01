@@ -27,15 +27,15 @@ typedef struct {
     UdpAnnounceRequest req;
     char *result_peers;
     size_t result_len;
+    int seeders;
+    int leechers;
     pthread_t thread;
 } TrackerJob;
 
 static void *tracker_worker_thread(void *arg) {
     TrackerJob *job = arg;
-
     job->req.announce_address = job->url;
-
-    job->result_peers = get_peers_list(&job->req, &job->result_len);
+    job->result_peers = get_peers_list(&job->req, &job->result_len, &job->seeders, &job->leechers);
     return NULL;
 }
 
@@ -99,7 +99,6 @@ static void *download_thread(void *arg) {
     e->piece_states = calloc(total_pieces, sizeof(uint8_t));
     e->pieces_completed = 0;
     pthread_mutex_unlock(&e->lock);
-    pthread_mutex_unlock(&e->lock);
 
     {
         FILE *f = fopen(e->torrent_path, "rb");
@@ -136,7 +135,7 @@ static void *download_thread(void *arg) {
 
     if (announceNode && announceNode->type == BEN_STR) {
         snprintf(jobs[job_count].url, sizeof(jobs[0].url), "%.*s",
-                 (int)announceNode->string.length, announceNode->string.data);
+                 (int) announceNode->string.length, announceNode->string.data);
         jobs[job_count].req = req;
         jobs[job_count].result_peers = NULL;
         job_count++;
@@ -152,7 +151,7 @@ static void *download_thread(void *arg) {
                 if (!url_node || url_node->type != BEN_STR) continue;
 
                 snprintf(jobs[job_count].url, sizeof(jobs[0].url), "%.*s",
-                         (int)url_node->string.length, url_node->string.data);
+                         (int) url_node->string.length, url_node->string.data);
                 jobs[job_count].req = req;
                 jobs[job_count].result_peers = NULL;
                 job_count++;
@@ -171,11 +170,15 @@ static void *download_thread(void *arg) {
 
     for (int i = 0; i < job_count; i++) {
         pthread_join(jobs[i].thread, NULL);
-
         if (jobs[i].result_peers) {
             if (!peers) {
                 peers = jobs[i].result_peers;
                 peers_len = jobs[i].result_len;
+
+                pthread_mutex_lock(&e->lock);
+                e->total_seeds = jobs[i].seeders;
+                e->total_peers = jobs[i].leechers;
+                pthread_mutex_unlock(&e->lock);
             } else {
                 free(jobs[i].result_peers);
             }
@@ -193,19 +196,7 @@ static void *download_thread(void *arg) {
 
     printf("[INFO] Swarm located. Trying to establish connections.\n");
 
-    if (!peers) {
-        fprintf(stderr, "[thread] No peers found for %s\n", e->name);
-        pthread_mutex_lock(&e->lock);
-        e->status = TS_STATUS_ERROR;
-        pthread_mutex_unlock(&e->lock);
-        freeBencodeNode(root);
-        return NULL;
-    }
-
     const size_t peers_count = peers_len / 6;
-    pthread_mutex_lock(&e->lock);
-    e->peers_count = (int) peers_count;
-    pthread_mutex_unlock(&e->lock);
 
     size_t num_files = 0;
     EndFile *end_files = fill_target_files(infoNode, &num_files, e->save_path);
@@ -231,7 +222,7 @@ static void *download_thread(void *arg) {
             if (rem != 0) current_piece_size = rem;
         }
 
-        if (read_piece_from_disk(p, e->piece_length, current_piece_size, verify_buffer, end_files, (int)num_files)) {
+        if (read_piece_from_disk(p, e->piece_length, current_piece_size, verify_buffer, end_files, (int) num_files)) {
             unsigned char hash[SHA_DIGEST_LENGTH];
             SHA1(verify_buffer, current_piece_size, hash);
             const unsigned char *expected_hash = pieces_hashes + (p * SHA_DIGEST_LENGTH);
@@ -246,7 +237,7 @@ static void *download_thread(void *arg) {
 
     pthread_mutex_lock(&e->lock);
     e->pieces_completed = recovered_pieces;
-    e->progress = (double)e->pieces_completed / (double)e->total_pieces;
+    e->progress = (double) e->pieces_completed / (double) e->total_pieces;
 
     if (e->pieces_completed == e->total_pieces) {
         e->status = TS_STATUS_SEEDING;
@@ -374,18 +365,9 @@ int ts_create_torrent(const char *source_dir,
 }
 
 int ts_torrent_count(const TorrentSession *s) { return s->count; }
-
-int ts_torrent_id(const TorrentSession *s, const int index) {
-    return s->entries[index].id;
-}
-
-const char *ts_torrent_name(const TorrentSession *s, const int index) {
-    return s->entries[index].name;
-}
-
-uint64_t ts_torrent_size(const TorrentSession *s, const int index) {
-    return s->entries[index].size_bytes;
-}
+int ts_torrent_id(const TorrentSession *s, const int index) { return s->entries[index].id; }
+const char *ts_torrent_name(const TorrentSession *s, const int index) { return s->entries[index].name; }
+uint64_t ts_torrent_size(const TorrentSession *s, const int index) { return s->entries[index].size_bytes; }
 
 double ts_torrent_progress(const TorrentSession *s, const int index) {
     TorrentEntry *e = (TorrentEntry *) &s->entries[index];
@@ -415,3 +397,11 @@ int ts_torrent_peers(const TorrentSession *s, const int index) { return s->entri
 bool ts_torrent_is_seeding(const TorrentSession *s, const int index) { return s->entries[index].seeding; }
 const char *ts_torrent_save_path(const TorrentSession *s, const int index) { return s->entries[index].save_path; }
 const char *ts_torrent_file_path(const TorrentSession *s, const int index) { return s->entries[index].torrent_path; }
+
+int ts_torrent_total_seeds(const TorrentSession *s, const int index) {
+    return s->entries[index].total_seeds;
+}
+
+int ts_torrent_total_peers(const TorrentSession *s, const int index) {
+    return s->entries[index].total_peers;
+}

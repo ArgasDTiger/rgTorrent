@@ -6,8 +6,10 @@ struct TorrentItem {
     QString name;
     quint64 sizeBytes   = 0;
     QString status;
-    int     seeds       = 0;
-    int     peers       = 0;
+    int seeds = 0;
+    int totalSeeds = 0;
+    int peers = 0;
+    int totalPeers = 0;
     double  progress    = 0.0;
     bool    seeding     = false;
     QString savePath;
