@@ -44,7 +44,8 @@ static bool read_exactly(const int fd, void *buf, const size_t count) {
     return true;
 }
 
-void request_block(const int sockfd, const uint32_t piece_index, const uint32_t block_offset, const uint32_t block_length) {
+void request_block(const int sockfd, const uint32_t piece_index, const uint32_t block_offset,
+                   const uint32_t block_length) {
     unsigned char req_msg[17];
     const uint32_t net_len = htonl(13);
     const uint8_t msg_id = 6;
@@ -196,7 +197,8 @@ static bool handle_unchoke(TorrentEntry *e, const struct pollfd *pfd, PeerConnec
 }
 
 static bool handle_downloading(TorrentEntry *e, const struct pollfd *pfd, PeerConnection *peer,
-                               const unsigned char *pieces_hashes, const EndFile *end_files, const int num_files) {
+                               const unsigned char *pieces_hashes, const EndFile *end_files, const int num_files,
+                               struct pollfd *all_poll_fds, PeerConnection *all_peers) {
     uint32_t msg_len_net;
     const ssize_t res = recv(pfd->fd, &msg_len_net, 4, 0);
 
@@ -234,7 +236,8 @@ static bool handle_downloading(TorrentEntry *e, const struct pollfd *pfd, PeerCo
 
             unsigned char *piece_buf = malloc(current_piece_size);
 
-            if (read_piece_from_disk(block_index, e->piece_length, current_piece_size, piece_buf, end_files, num_files)) {
+            if (read_piece_from_disk(block_index, e->piece_length, current_piece_size, piece_buf, end_files,
+                                     num_files)) {
                 if (block_begin + block_length <= current_piece_size) {
                     const uint32_t out_msg_len = htonl(9 + block_length);
                     const uint8_t out_id = 7;
@@ -305,6 +308,23 @@ static bool handle_downloading(TorrentEntry *e, const struct pollfd *pfd, PeerCo
         e->progress = (double) e->pieces_completed / (double) e->total_pieces;
         pthread_mutex_unlock(&e->lock);
 
+        const uint32_t have_msg_len = htonl(5);
+        const uint8_t have_msg_id = 4;
+        const uint32_t net_piece_index = htonl(block_index);
+
+        unsigned char have_msg[9];
+        memcpy(have_msg, &have_msg_len, 4);
+        have_msg[4] = have_msg_id;
+        memcpy(have_msg + 5, &net_piece_index, 4);
+
+        for (int j = 0; j < MAX_PEERS; j++) {
+            if (all_poll_fds[j].fd != -1 && all_peers[j].state >= PEER_STATE_HANDSHAKING) {
+                if (all_poll_fds[j].fd != pfd->fd) {
+                    send(all_poll_fds[j].fd, have_msg, 9, 0);
+                }
+            }
+        }
+
         free(peer->piece_buffer);
         peer->piece_buffer = NULL;
 
@@ -337,7 +357,8 @@ static bool handle_downloading(TorrentEntry *e, const struct pollfd *pfd, PeerCo
     return true;
 }
 
-static void initiate_connections(struct pollfd *poll_fds, PeerConnection *peers, const unsigned char *peers_list, size_t peers_count) {
+static void initiate_connections(struct pollfd *poll_fds, PeerConnection *peers, const unsigned char *peers_list,
+                                 size_t peers_count) {
     const int spawn_count = peers_count < MAX_PEERS ? peers_count : MAX_PEERS;
 
     for (int i = 0; i < spawn_count; i++) {
@@ -391,7 +412,7 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
     int bound_port = 6881;
-    while (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0 && bound_port < 6890) {
+    while (bind(server_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0 && bound_port < 6890) {
         bound_port++;
         server_addr.sin_port = htons(bound_port);
     }
@@ -467,7 +488,7 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
         if (poll_fds[MAX_PEERS].revents & POLLIN) {
             struct sockaddr_in client_addr;
             socklen_t client_len = sizeof(client_addr);
-            const int new_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+            const int new_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_len);
 
             if (new_fd >= 0) {
                 set_nonblocking(new_fd);
@@ -504,7 +525,8 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
                         keep_alive = handle_unchoke(e, &poll_fds[i], &peers[i]);
                         break;
                     case PEER_STATE_DOWNLOADING:
-                        keep_alive = handle_downloading(e, &poll_fds[i], &peers[i], pieces_hashes, end_files, num_files);
+                        keep_alive = handle_downloading(e, &poll_fds[i], &peers[i], pieces_hashes, end_files, num_files,
+                                                        poll_fds, peers);
                         break;
                     case PEER_STATE_INCOMING_HANDSHAKE: {
                         PeerHandshake incoming;
@@ -596,7 +618,7 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
         poll_fds[MAX_PEERS].fd = -1;
     }
 
-     for (int i = 0; i < MAX_PEERS; i++) {
+    for (int i = 0; i < MAX_PEERS; i++) {
         if (peers[i].state != PEER_STATE_DEAD) {
             drop_peer(e, &poll_fds[i], &peers[i]);
         }
