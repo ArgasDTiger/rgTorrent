@@ -96,6 +96,9 @@ void MainWindow::buildUi() {
 
     connect(m_listWidget, &TorrentListWidget::selectionChanged,
             this, [this](const TorrentItem &t) { m_detailPanel->setTorrent(t); });
+    connect(m_listWidget, &TorrentListWidget::pauseRequested, m_backend, &TorrentBackend::pauseTorrent);
+    connect(m_listWidget, &TorrentListWidget::resumeRequested, m_backend, &TorrentBackend::resumeTorrent);
+    connect(m_listWidget, &TorrentListWidget::removeRequested, this, &MainWindow::onRemoveTorrent);
 
     connect(m_searchEdit, &QLineEdit::textChanged,
             m_listWidget, &TorrentListWidget::setFilter);

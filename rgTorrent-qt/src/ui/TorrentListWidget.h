@@ -21,10 +21,14 @@ public:
 
 signals:
     void selectionChanged(const TorrentItem &item);
-    void removeRequested(int id);
+    void pauseRequested(int id);
+    void resumeRequested(int id);
+    void removeRequested();
 
 private slots:
     void onSelectionChanged();
+    void onCustomContextMenu(const QPoint &pos);
+    void onDoubleClicked(int row, int col);
 
 private:
     QTableWidget         *m_table;

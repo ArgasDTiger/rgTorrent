@@ -224,7 +224,9 @@ void TorrentBackend::saveSession() const {
         QString tPath = QString::fromUtf8(ts_torrent_file_path(m_session, i));
         QString sPath = QString::fromUtf8(ts_torrent_save_path(m_session, i));
 
-        activeTorrents.append(tPath + "|" + sPath);
+        QString isPaused = ts_torrent_status(m_session, i) == TS_STATUS_PAUSED ? "1" : "0";
+
+        activeTorrents.append(tPath + "|" + sPath + "|" + isPaused);
     }
 
     settings.setValue("session/torrents", activeTorrents);
@@ -235,10 +237,24 @@ void TorrentBackend::loadSession() const {
     QStringList activeTorrents = settings.value("session/torrents").toStringList();
 
     for (const QString &entry: activeTorrents) {
-        if (QStringList parts = entry.split("|"); parts.size() == 2) {
-            ts_add_torrent(m_session,
-                           parts[0].toUtf8().constData(),
-                           parts[1].toUtf8().constData());
+        if (QStringList parts = entry.split("|"); parts.size() >= 2) {
+            const int id = ts_add_torrent(m_session,
+                                    parts[0].toUtf8().constData(),
+                                    parts[1].toUtf8().constData());
+
+            if (parts.size() >= 3 && parts[2] == "1") {
+                ts_pause_torrent(m_session, id);
+            }
         }
     }
+}
+
+void TorrentBackend::pauseTorrent(const int id) {
+    ts_pause_torrent(m_session, id);
+    poll();
+}
+
+void TorrentBackend::resumeTorrent(const int id) {
+    ts_resume_torrent(m_session, id);
+    poll();
 }

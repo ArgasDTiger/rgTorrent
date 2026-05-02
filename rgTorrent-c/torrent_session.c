@@ -239,11 +239,13 @@ static void *download_thread(void *arg) {
     e->pieces_completed = recovered_pieces;
     e->progress = (double) e->pieces_completed / (double) e->total_pieces;
 
-    if (e->pieces_completed == e->total_pieces) {
-        e->status = TS_STATUS_SEEDING;
-        e->seeding = true;
-    } else {
-        e->status = TS_STATUS_DOWNLOADING;
+    if (e->status != TS_STATUS_PAUSED) {
+        if (e->pieces_completed == e->total_pieces) {
+            e->status = TS_STATUS_SEEDING;
+            e->seeding = true;
+        } else {
+            e->status = TS_STATUS_DOWNLOADING;
+        }
     }
 
     pthread_mutex_unlock(&e->lock);
@@ -251,6 +253,14 @@ static void *download_thread(void *arg) {
     printf("[INFO] Verification complete. Recovered %d / %ld pieces.\n", recovered_pieces, e->total_pieces);
 
     start_swarm(e, (unsigned char *) peers, peers_count, pieces_hashes, end_files, (int) num_files);
+
+    pthread_mutex_lock(&e->lock);
+    if (e->pieces_completed == e->total_pieces && e->status != TS_STATUS_PAUSED) {
+        e->status = TS_STATUS_SEEDING;
+        e->seeding = true;
+        e->progress = 1.0;
+    }
+    pthread_mutex_unlock(&e->lock);
 
     free(end_files);
     free(peers);
@@ -352,6 +362,45 @@ void ts_remove_torrent(TorrentSession *s, int id) {
             memmove(&s->entries[i], &s->entries[i + 1],
                     (s->count - i - 1) * sizeof(TorrentEntry));
             s->count--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s->lock);
+}
+
+void ts_pause_torrent(TorrentSession *s, const int id) {
+    pthread_mutex_lock(&s->lock);
+    for (int i = 0; i < s->count; i++) {
+        if (s->entries[i].id == id) {
+            pthread_mutex_lock(&s->entries[i].lock);
+
+            if (s->entries[i].status == TS_STATUS_DOWNLOADING ||
+                s->entries[i].status == TS_STATUS_SEEDING ||
+                s->entries[i].status == TS_STATUS_VERIFYING) {
+
+                s->entries[i].status = TS_STATUS_PAUSED;
+                }
+
+            pthread_mutex_unlock(&s->entries[i].lock);
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s->lock);
+}
+
+void ts_resume_torrent(TorrentSession *s, int id) {
+    pthread_mutex_lock(&s->lock);
+    for (int i = 0; i < s->count; i++) {
+        if (s->entries[i].id == id) {
+            pthread_mutex_lock(&s->entries[i].lock);
+            if (s->entries[i].status == TS_STATUS_PAUSED) {
+                if (s->entries[i].pieces_completed == s->entries[i].total_pieces) {
+                    s->entries[i].status = TS_STATUS_SEEDING;
+                } else {
+                    s->entries[i].status = TS_STATUS_DOWNLOADING;
+                }
+            }
+            pthread_mutex_unlock(&s->entries[i].lock);
             break;
         }
     }

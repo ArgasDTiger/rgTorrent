@@ -35,6 +35,10 @@
         <message><source>%1 MB</source><translation>%1 МБ</translation></message>
         <message><source>%1 KB</source><translation>%1 КБ</translation></message>
         <message><source>%1 B</source><translation>%1 Б</translation></message>
+        <message><source>▶ Resume</source><translation>▶ Продовжити</translation></message>
+        <message><source>⏸ Pause</source><translation>⏸ Пауза</translation></message>
+        <message><source>📁 Open Location</source><translation>📁 Відкрити теку</translation></message>
+        <message><source>✕ Remove</source><translation>✕ Видалити</translation></message>
     </context>
     <context>
         <name>TorrentDetailsPanel</name>

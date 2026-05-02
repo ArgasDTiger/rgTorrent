@@ -5,6 +5,9 @@
 #include <QPainter>
 #include <QStyleOptionProgressBar>
 #include <QApplication>
+#include <QMenu>
+#include <QDesktopServices>
+#include <QUrl>
 
 class ProgressDelegate final : public QStyledItemDelegate {
 public:
@@ -92,6 +95,10 @@ TorrentListWidget::TorrentListWidget(QWidget *parent)
     m_table->setShowGrid(false);
     m_table->setSortingEnabled(true);
 
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_table, &QTableWidget::customContextMenuRequested, this, &TorrentListWidget::onCustomContextMenu);
+    connect(m_table, &QTableWidget::cellDoubleClicked, this, &TorrentListWidget::onDoubleClicked);
+
     m_progressDelegate = new ProgressDelegate(this);
     m_table->setItemDelegateForColumn(COL_PROGRESS, m_progressDelegate);
 
@@ -143,7 +150,7 @@ void TorrentListWidget::rebuildTable() {
     m_table->setSortingEnabled(false);
     m_table->setRowCount(m_filtered.size());
 
-    const QString statusVerifying   = QCoreApplication::translate("TorrentBackend", "Verifying");
+    const QString statusVerifying = QCoreApplication::translate("TorrentBackend", "Verifying");
     const QString statusDownloading = QCoreApplication::translate("TorrentBackend", "Downloading");
     const QString statusSeeding = QCoreApplication::translate("TorrentBackend", "Seeding");
     const QString statusPaused = QCoreApplication::translate("TorrentBackend", "Paused");
@@ -223,4 +230,41 @@ void TorrentListWidget::retranslateUi() const {
         tr("Name"), tr("Size"), tr("Status"),
         tr("Seeds"), tr("Peers"), tr("Progress"), tr("Seeding")
     });
+}
+
+void TorrentListWidget::onCustomContextMenu(const QPoint &pos) {
+    const int id = selectedId();
+    if (id == -1) return;
+
+    QMenu menu(this);
+    const QAction *actResume = menu.addAction(tr("▶ Resume"));
+    const QAction *actPause = menu.addAction(tr("⏸ Pause"));
+    menu.addSeparator();
+    const QAction *actOpen = menu.addAction(tr("📁 Open Location"));
+    menu.addSeparator();
+    const QAction *actRemove = menu.addAction(tr("✕ Remove"));
+
+    if (const QAction *chosen = menu.exec(m_table->viewport()->mapToGlobal(pos)); chosen == actResume) emit
+        resumeRequested(id);
+    else if (chosen == actPause) emit pauseRequested(id);
+    else if (chosen == actRemove) emit removeRequested();
+    else if (chosen == actOpen) {
+        for (const auto &t: m_filtered) {
+            if (t.id == id) {
+                QDesktopServices::openUrl(QUrl::fromLocalFile(t.savePath));
+                break;
+            }
+        }
+    }
+}
+
+void TorrentListWidget::onDoubleClicked(const int row, const int col) {
+    Q_UNUSED(col);
+    const int id = m_table->item(row, COL_NAME)->data(Qt::UserRole).toInt();
+    for (const auto &t: m_filtered) {
+        if (t.id == id) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(t.savePath));
+            break;
+        }
+    }
 }

@@ -35,6 +35,10 @@
         <message><source>%1 MB</source><translation>%1 MB</translation></message>
         <message><source>%1 KB</source><translation>%1 KB</translation></message>
         <message><source>%1 B</source><translation>%1 B</translation></message>
+        <message><source>▶ Resume</source><translation>▶ Resume</translation></message>
+        <message><source>⏸ Pause</source><translation>⏸ Pause</translation></message>
+        <message><source>📁 Open Location</source><translation>📁 Open Location</translation></message>
+        <message><source>✕ Remove</source><translation>✕ Remove</translation></message>
     </context>
     <context>
         <name>TorrentDetailsPanel</name>
