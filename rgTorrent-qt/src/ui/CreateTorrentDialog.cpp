@@ -42,6 +42,15 @@ CreateTorrentDialog::CreateTorrentDialog(QWidget *parent)
     m_trackerEdit->setPlaceholderText("udp://tracker.example.com:6969/announce");
     form->addRow(tr("Tracker URL:"), m_trackerEdit);
 
+    m_pieceSizeCombo = new QComboBox(this);
+    m_pieceSizeCombo->addItem("256 KB", 262144);
+    m_pieceSizeCombo->addItem("512 KB", 524288);
+    m_pieceSizeCombo->addItem("1 MB", 1048576);
+    m_pieceSizeCombo->addItem("2 MB", 2097152);
+    m_pieceSizeCombo->addItem("4 MB", 4194304);
+    m_pieceSizeCombo->setCurrentIndex(1);
+    form->addRow(tr("Piece Size:"), m_pieceSizeCombo);
+
     vlay->addLayout(form);
 
     auto *btns = new QDialogButtonBox(
@@ -68,3 +77,6 @@ CreateTorrentDialog::CreateTorrentDialog(QWidget *parent)
 QString CreateTorrentDialog::sourceDir()  const { return m_sourceDirEdit->text(); }
 QString CreateTorrentDialog::outputPath() const { return m_outputPathEdit->text(); }
 QString CreateTorrentDialog::trackerUrl() const { return m_trackerEdit->text(); }
+int CreateTorrentDialog::pieceLength() const {
+    return m_pieceSizeCombo->currentData().toInt();
+}

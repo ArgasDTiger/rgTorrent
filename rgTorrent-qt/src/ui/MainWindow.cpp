@@ -209,7 +209,9 @@ void MainWindow::onCreateTorrent() {
     CreateTorrentDialog dlg(this);
     if (dlg.exec() != QDialog::Accepted) return;
     if (dlg.sourceDir().isEmpty() || dlg.outputPath().isEmpty()) return;
-    m_backend->createTorrent(dlg.sourceDir(), dlg.outputPath(), dlg.trackerUrl());
+
+    m_backend->createTorrent(dlg.sourceDir(), dlg.outputPath(), dlg.trackerUrl(), dlg.pieceLength());
+
     statusBar()->showMessage(tr("Torrent created: %1").arg(dlg.outputPath()), 3000);
 }
 

@@ -7,6 +7,7 @@ extern "C" {
 #include "torrent_session.h"
 #include "bencoder.h"
 #include "bencode_parser.h"
+#include "torrent_creator.h"
 }
 
 static QString formatSize(const quint64 bytes) {
@@ -20,13 +21,13 @@ static QString formatSize(const quint64 bytes) {
 
 static QString statusToString(const TsStatus s) {
     switch (s) {
-        case TS_STATUS_VERIFYING:   return TorrentBackend::tr("Verifying");
+        case TS_STATUS_VERIFYING: return TorrentBackend::tr("Verifying");
         case TS_STATUS_DOWNLOADING: return TorrentBackend::tr("Downloading");
-        case TS_STATUS_SEEDING:     return TorrentBackend::tr("Seeding");
-        case TS_STATUS_PAUSED:      return TorrentBackend::tr("Paused");
-        case TS_STATUS_ERROR:       return TorrentBackend::tr("Error");
-        case TS_STATUS_QUEUED:      return TorrentBackend::tr("Queued");
-        default:                    return TorrentBackend::tr("Unknown");
+        case TS_STATUS_SEEDING: return TorrentBackend::tr("Seeding");
+        case TS_STATUS_PAUSED: return TorrentBackend::tr("Paused");
+        case TS_STATUS_ERROR: return TorrentBackend::tr("Error");
+        case TS_STATUS_QUEUED: return TorrentBackend::tr("Queued");
+        default: return TorrentBackend::tr("Unknown");
     }
 }
 
@@ -54,10 +55,10 @@ void TorrentBackend::poll() {
         t.name = QString::fromUtf8(ts_torrent_name(m_session, i));
         t.sizeBytes = ts_torrent_size(m_session, i);
         t.status = statusToString(ts_torrent_status(m_session, i));
-        t.seeds       = ts_torrent_seeds(m_session, i);
-        t.totalSeeds  = ts_torrent_total_seeds(m_session, i);
-        t.peers       = ts_torrent_peers(m_session, i);
-        t.totalPeers  = ts_torrent_total_peers(m_session, i);
+        t.seeds = ts_torrent_seeds(m_session, i);
+        t.totalSeeds = ts_torrent_total_seeds(m_session, i);
+        t.peers = ts_torrent_peers(m_session, i);
+        t.totalPeers = ts_torrent_total_peers(m_session, i);
         t.progress = ts_torrent_progress(m_session, i);
         t.seeding = ts_torrent_is_seeding(m_session, i);
         t.savePath = QString::fromUtf8(ts_torrent_save_path(m_session, i));
@@ -106,12 +107,10 @@ void TorrentBackend::removeTorrent(const int id) {
     poll();
 }
 
-void TorrentBackend::createTorrent(const QString &sourceDir,
-                                   const QString &outputPath,
-                                   const QString &trackerUrl) {
-    const int rc = ts_create_torrent(sourceDir.toUtf8().constData(),
-                                     outputPath.toUtf8().constData(),
-                                     trackerUrl.toUtf8().constData());
+void TorrentBackend::createTorrent(const QString &sourceDir, const QString &outputPath, const QString &trackerUrl,
+                                   const int pieceLength) {
+    const int rc = ts_create_torrent(sourceDir.toUtf8().constData(), outputPath.toUtf8().constData(),
+                                     trackerUrl.toUtf8().constData(), pieceLength);
     if (rc != 0)
         emit errorOccurred(tr("Failed to create torrent."));
 }
@@ -134,8 +133,8 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
     if (info) {
         if (const BencodeNode *nameNode = getDictValue(info, "name"); nameNode && nameNode->type == BEN_STR)
             out += tr("Name:") + "         " +
-                   QString::fromUtf8((char*)nameNode->string.data,
-                                     (int)nameNode->string.length) + "\n";
+                    QString::fromUtf8((char *) nameNode->string.data,
+                                      (int) nameNode->string.length) + "\n";
 
         const BencodeNode *lenNode = getDictValue(info, "length");
         if (lenNode && lenNode->type == BEN_INT)
@@ -146,7 +145,7 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
 
         if (const BencodeNode *piecesNode = getDictValue(info, "pieces"); piecesNode && piecesNode->type == BEN_STR)
             out += tr("Pieces:") + "       " +
-                   QString::number(piecesNode->string.length / 20) + "\n";
+                    QString::number(piecesNode->string.length / 20) + "\n";
 
         if (const BencodeNode *privNode = getDictValue(info, "private"); privNode && privNode->type == BEN_INT) {
             out += tr("Private:") + "      " + (privNode->intValue == 1 ? tr("Yes") : tr("No")) + "\n";
@@ -179,8 +178,8 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
 
     if (const BencodeNode *ann = getDictValue(root, "announce"); ann && ann->type == BEN_STR)
         out += "\n" + tr("Primary Tracker:") + " " +
-               QString::fromUtf8(reinterpret_cast<char *>(ann->string.data),
-                                 static_cast<int>(ann->string.length)) + "\n";
+                QString::fromUtf8(reinterpret_cast<char *>(ann->string.data),
+                                  static_cast<int>(ann->string.length)) + "\n";
 
     if (const BencodeNode *annList = getDictValue(root, "announce-list"); annList && annList->type == BEN_LIST) {
         out += tr("Backup Trackers:") + "\n";
@@ -196,20 +195,21 @@ QString TorrentBackend::torrentContents(const QString &torrentPath) {
         }
     }
 
-    if (const BencodeNode *creationDate = getDictValue(root, "creation date"); creationDate && creationDate->type == BEN_INT) {
+    if (const BencodeNode *creationDate = getDictValue(root, "creation date");
+        creationDate && creationDate->type == BEN_INT) {
         const QDateTime dt = QDateTime::fromSecsSinceEpoch(creationDate->intValue);
         out += "\n" + tr("Created on:") + "   " + dt.toString("yyyy-MM-dd HH:mm:ss") + "\n";
     }
 
     if (const BencodeNode *comment = getDictValue(root, "comment"); comment && comment->type == BEN_STR)
         out += tr("Comment:") + "      " +
-               QString::fromUtf8(reinterpret_cast<char *>(comment->string.data),
-                                 static_cast<int>(comment->string.length)) + "\n";
+                QString::fromUtf8(reinterpret_cast<char *>(comment->string.data),
+                                  static_cast<int>(comment->string.length)) + "\n";
 
     if (const BencodeNode *createdBy = getDictValue(root, "created by"); createdBy && createdBy->type == BEN_STR)
         out += tr("Created by:") + "   " +
-               QString::fromUtf8(reinterpret_cast<char *>(createdBy->string.data),
-                                 static_cast<int>(createdBy->string.length)) + "\n";
+                QString::fromUtf8(reinterpret_cast<char *>(createdBy->string.data),
+                                  static_cast<int>(createdBy->string.length)) + "\n";
 
     freeBencodeNode(root);
     return out;

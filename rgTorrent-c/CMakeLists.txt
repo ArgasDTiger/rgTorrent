@@ -12,7 +12,8 @@ add_executable(rgTorrent main.c bencoding/bencoder.c bencoding/bencode_parser.c 
         connectivity/handshake/handshake.c
         downloader/downloader.c
         downloader/file_saver.c
-        swarm/swarm.c)
+        swarm/swarm.c
+        creation/torrent_creator.c)
 
-target_include_directories(rgTorrent PRIVATE helpers bencoding connectivity connectivity/handshake downloader swarm)
+target_include_directories(rgTorrent PRIVATE helpers bencoding connectivity connectivity/handshake downloader swarm creation)
 target_link_libraries(rgTorrent OpenSSL::SSL OpenSSL::Crypto uriparser::uriparser)

@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QComboBox>
 
 class QLineEdit;
 class QPushButton;
@@ -9,12 +10,14 @@ class CreateTorrentDialog final : public QDialog {
 public:
     explicit CreateTorrentDialog(QWidget *parent = nullptr);
 
-    QString sourceDir()   const;
-    QString outputPath()  const;
-    QString trackerUrl()  const;
+    [[nodiscard]] QString sourceDir() const;
+    [[nodiscard]] QString outputPath() const;
+    [[nodiscard]] QString trackerUrl() const;
+    [[nodiscard]] int pieceLength() const;
 
 private:
     QLineEdit *m_sourceDirEdit;
     QLineEdit *m_outputPathEdit;
     QLineEdit *m_trackerEdit;
+    QComboBox *m_pieceSizeCombo;
 };

@@ -96,10 +96,6 @@ const char *ts_torrent_save_path(const TorrentSession *s, int index);
 
 const char *ts_torrent_file_path(const TorrentSession *s, int index);
 
-int ts_create_torrent(const char *source_dir,
-                      const char *output_path,
-                      const char *tracker_url);
-
 int ts_torrent_total_seeds(const TorrentSession *s, int index);
 
 int ts_torrent_total_peers(const TorrentSession *s, int index);

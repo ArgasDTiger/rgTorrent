@@ -25,8 +25,7 @@ public:
 public slots:
     void addTorrent(const QString &torrentPath, const QString &savePath);
     void removeTorrent(int id);
-    void createTorrent(const QString &sourceDir, const QString &outputPath,
-                       const QString &trackerUrl);
+    void createTorrent(const QString &sourceDir, const QString &outputPath,const QString &trackerUrl, int pieceLength);
 
     signals:
         void torrentsChanged(const QList<TorrentItem> &items);

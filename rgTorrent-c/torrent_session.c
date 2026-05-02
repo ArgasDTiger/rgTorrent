@@ -358,16 +358,6 @@ void ts_remove_torrent(TorrentSession *s, int id) {
     pthread_mutex_unlock(&s->lock);
 }
 
-int ts_create_torrent(const char *source_dir,
-                      const char *output_path,
-                      const char *tracker_url) {
-    // TODO: implement torrent creation
-    (void) source_dir;
-    (void) output_path;
-    (void) tracker_url;
-    return 0;
-}
-
 int ts_torrent_count(const TorrentSession *s) { return s->count; }
 int ts_torrent_id(const TorrentSession *s, const int index) { return s->entries[index].id; }
 const char *ts_torrent_name(const TorrentSession *s, const int index) { return s->entries[index].name; }
