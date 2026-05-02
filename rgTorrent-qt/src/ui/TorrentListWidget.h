@@ -18,6 +18,7 @@ public:
 
     [[nodiscard]] int selectedId() const;
     void retranslateUi() const;
+    void clearSelection();
 
 signals:
     void selectionChanged(const TorrentItem &item);

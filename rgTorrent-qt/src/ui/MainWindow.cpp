@@ -51,7 +51,10 @@ MainWindow::MainWindow(TorrentBackend *backend, ThemeManager *theme, QWidget *pa
             this, [this](const QString &msg) {
                 statusBar()->showMessage(msg, 4000);
             });
-
+    connect(m_detailPanel, &TorrentDetailsPanel::closeRequested, this, [this]() {
+            m_detailPanel->hide();
+            m_listWidget->clearSelection();
+        });
     m_listWidget->setTorrents(m_backend->torrents());
 
     m_langCombo->blockSignals(true);
@@ -95,7 +98,13 @@ void MainWindow::buildUi() {
     statusBar()->showMessage(tr("Ready"));
 
     connect(m_listWidget, &TorrentListWidget::selectionChanged,
-            this, [this](const TorrentItem &t) { m_detailPanel->setTorrent(t); });
+            this, [this](const TorrentItem &item) {
+                m_detailPanel->setTorrent(item);
+
+                if (m_detailPanel->isHidden()) {
+                    m_detailPanel->show();
+                }
+            });
     connect(m_listWidget, &TorrentListWidget::pauseRequested, m_backend, &TorrentBackend::pauseTorrent);
     connect(m_listWidget, &TorrentListWidget::resumeRequested, m_backend, &TorrentBackend::resumeTorrent);
     connect(m_listWidget, &TorrentListWidget::removeRequested, this, &MainWindow::onRemoveTorrent);
@@ -204,7 +213,10 @@ void MainWindow::onRemoveTorrent() {
     if (btn != QMessageBox::Yes) return;
 
     m_backend->removeTorrent(id);
-    m_detailPanel->clear();
+    if (m_backend->torrents().isEmpty()) {
+        m_detailPanel->clear();
+        m_detailPanel->hide();
+    }
     statusBar()->showMessage(tr("Torrent removed."), 2000);
 }
 

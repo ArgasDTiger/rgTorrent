@@ -14,6 +14,9 @@ public:
     void clear();
     void retranslateUi() const;
 
+signals:
+    void closeRequested();
+
 private:
     static void addRow(QWidget *grid, int row, const QString &key, QLabel **valueOut);
 

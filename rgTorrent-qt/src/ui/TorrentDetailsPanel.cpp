@@ -5,6 +5,7 @@
 #include <QProgressBar>
 #include <QFrame>
 #include <QScrollArea>
+#include <QPushButton>
 
 TorrentDetailsPanel::TorrentDetailsPanel(QWidget *parent)
     : QWidget(parent)
@@ -24,9 +25,24 @@ TorrentDetailsPanel::TorrentDetailsPanel(QWidget *parent)
     vlay->setContentsMargins(16, 16, 16, 16);
     vlay->setSpacing(12);
 
+    auto *headerLay = new QHBoxLayout;
+    headerLay->setContentsMargins(0, 0, 0, 0);
+
     auto *title = new QLabel(tr("TORRENT DETAILS"), content);
     title->setObjectName("sectionLabel");
-    vlay->addWidget(title);
+    headerLay->addWidget(title);
+
+    headerLay->addStretch();
+
+    auto *closeBtn = new QPushButton("✕", content);
+    closeBtn->setFixedSize(24, 24);
+    closeBtn->setFlat(true);
+    closeBtn->setCursor(Qt::PointingHandCursor);
+    headerLay->addWidget(closeBtn);
+
+    vlay->addLayout(headerLay);
+
+    connect(closeBtn, &QPushButton::clicked, this, &TorrentDetailsPanel::closeRequested);
 
     m_card = new QFrame(content);
     m_card->setFrameShape(QFrame::StyledPanel);
@@ -70,6 +86,7 @@ TorrentDetailsPanel::TorrentDetailsPanel(QWidget *parent)
     outerLay->addWidget(scroll);
 
     clear();
+    hide();
 }
 
 void TorrentDetailsPanel::addRow(QWidget *parent, const int row,

@@ -268,3 +268,7 @@ void TorrentListWidget::onDoubleClicked(const int row, const int col) {
         }
     }
 }
+
+void TorrentListWidget::clearSelection() {
+    m_table->clearSelection();
+}
