@@ -345,9 +345,30 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
 
     while (true) {
         pthread_mutex_lock(&e->lock);
-        const bool should_exit = (e->status == TS_STATUS_PAUSED || e->status == TS_STATUS_ERROR);
+        TsStatus current_status = e->status;
         pthread_mutex_unlock(&e->lock);
-        if (should_exit) break;
+
+        if (current_status == TS_STATUS_ERROR) break;
+
+        if (current_status == TS_STATUS_PAUSED) {
+            for (int i = 0; i < MAX_PEERS; i++) {
+                drop_peer(e, &poll_fds[i], &peers[i]);
+            }
+
+            // TODO: probably only temp solution
+            while (true) {
+                sleep(1);
+                pthread_mutex_lock(&e->lock);
+                current_status = e->status;
+                pthread_mutex_unlock(&e->lock);
+                if (current_status != TS_STATUS_PAUSED) break;
+            }
+
+            if (current_status == TS_STATUS_DOWNLOADING || current_status == TS_STATUS_SEEDING) {
+                initiate_connections(poll_fds, peers, peers_list, peers_count);
+            }
+            continue;
+        }
 
         const int activity = poll(poll_fds, MAX_PEERS, 1000);
         if (activity < 0) break;
