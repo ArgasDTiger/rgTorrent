@@ -5,10 +5,10 @@
         <name>MainWindow</name>
         <message><source>rgTorrent</source><translation>rgTorrent</translation></message>
         <message><source>Filter torrents…</source><translation>Filter torrents…</translation></message>
-        <message><source>＋ Add</source><translation>＋ Add</translation></message>
-        <message><source>✕ Remove</source><translation>✕ Remove</translation></message>
-        <message><source>⚙ Create</source><translation>⚙ Create</translation></message>
-        <message><source>🔍 Contents</source><translation>🔍 Contents</translation></message>
+        <message><source>Add</source><translation>Add</translation></message>
+        <message><source>Remove</source><translation>Remove</translation></message>
+        <message><source>Create</source><translation>Create</translation></message>
+        <message><source>Contents</source><translation>Contents</translation></message>
         <message><source>Ready</source><translation>Ready</translation></message>
         <message><source>Open torrent file</source><translation>Open torrent file</translation></message>
         <message><source>Torrent files (*.torrent);;All files (*)</source><translation>Torrent files (*.torrent);;All files (*)</translation></message>
@@ -29,16 +29,16 @@
         <message><source>Peers</source><translation>Peers</translation></message>
         <message><source>Progress</source><translation>Progress</translation></message>
         <message><source>Seeding</source><translation>Seeding</translation></message>
-        <message><source>✓ Yes</source><translation>✓ Yes</translation></message>
+        <message><source>Yes</source><translation>Yes</translation></message>
         <message><source>No</source><translation>No</translation></message>
         <message><source>%1 GB</source><translation>%1 GB</translation></message>
         <message><source>%1 MB</source><translation>%1 MB</translation></message>
         <message><source>%1 KB</source><translation>%1 KB</translation></message>
         <message><source>%1 B</source><translation>%1 B</translation></message>
-        <message><source>▶ Resume</source><translation>▶ Resume</translation></message>
-        <message><source>⏸ Pause</source><translation>⏸ Pause</translation></message>
-        <message><source>📁 Open Location</source><translation>📁 Open Location</translation></message>
-        <message><source>✕ Remove</source><translation>✕ Remove</translation></message>
+        <message><source>Resume</source><translation>Resume</translation></message>
+        <message><source>Pause</source><translation>Pause</translation></message>
+        <message><source>Open Location</source><translation>Open Location</translation></message>
+        <message><source>Remove</source><translation>Remove</translation></message>
     </context>
     <context>
         <name>TorrentDetailsPanel</name>

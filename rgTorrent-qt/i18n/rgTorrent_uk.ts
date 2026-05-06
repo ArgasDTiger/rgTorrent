@@ -5,10 +5,10 @@
         <name>MainWindow</name>
         <message><source>rgTorrent</source><translation>rgTorrent</translation></message>
         <message><source>Filter torrents…</source><translation>Фільтр торентів…</translation></message>
-        <message><source>＋ Add</source><translation>＋ Додати</translation></message>
-        <message><source>✕ Remove</source><translation>✕ Видалити</translation></message>
-        <message><source>⚙ Create</source><translation>⚙ Створити</translation></message>
-        <message><source>🔍 Contents</source><translation>🔍 Вміст</translation></message>
+        <message><source>Add</source><translation>Додати</translation></message>
+        <message><source>Remove</source><translation>Видалити</translation></message>
+        <message><source>Create</source><translation>Створити</translation></message>
+        <message><source>Contents</source><translation>Вміст</translation></message>
         <message><source>Ready</source><translation>Готово</translation></message>
         <message><source>Open torrent file</source><translation>Відкрити торент-файл</translation></message>
         <message><source>Torrent files (*.torrent);;All files (*)</source><translation>Торент-файли (*.torrent);;Усі файли (*)</translation></message>
@@ -28,17 +28,17 @@
         <message><source>Seeds</source><translation>Сіди</translation></message>
         <message><source>Peers</source><translation>Піри</translation></message>
         <message><source>Progress</source><translation>Прогрес</translation></message>
-        <message><source>Seeding</source><translation>Роздача</translation></message>
-        <message><source>✓ Yes</source><translation>✓ Так</translation></message>
+        <message><source>Seeding</source><translation>Роздається</translation></message>
+        <message><source>Yes</source><translation>Так</translation></message>
         <message><source>No</source><translation>Ні</translation></message>
         <message><source>%1 GB</source><translation>%1 ГБ</translation></message>
         <message><source>%1 MB</source><translation>%1 МБ</translation></message>
         <message><source>%1 KB</source><translation>%1 КБ</translation></message>
         <message><source>%1 B</source><translation>%1 Б</translation></message>
-        <message><source>▶ Resume</source><translation>▶ Продовжити</translation></message>
-        <message><source>⏸ Pause</source><translation>⏸ Пауза</translation></message>
-        <message><source>📁 Open Location</source><translation>📁 Відкрити теку</translation></message>
-        <message><source>✕ Remove</source><translation>✕ Видалити</translation></message>
+        <message><source>Resume</source><translation>Продовжити</translation></message>
+        <message><source>Pause</source><translation>Призупинити</translation></message>
+        <message><source>Open Location</source><translation>Відкрити теку</translation></message>
+        <message><source>Remove</source><translation>Видалити</translation></message>
     </context>
     <context>
         <name>TorrentDetailsPanel</name>
@@ -77,15 +77,15 @@
         <message><source>Cannot open file.</source><translation>Неможливо відкрити файл.</translation></message>
         <message><source>Verifying</source><translation>Перевірка</translation></message>
         <message><source>Downloading</source><translation>Завантаження</translation></message>
-        <message><source>Seeding</source><translation>Роздача</translation></message>
-        <message><source>Paused</source><translation>На паузі</translation></message>
+        <message><source>Seeding</source><translation>Роздається</translation></message>
+        <message><source>Paused</source><translation>Призупинено</translation></message>
         <message><source>Error</source><translation>Помилка</translation></message>
         <message><source>Queued</source><translation>В черзі</translation></message>
         <message><source>Unknown</source><translation>Невідомо</translation></message>
         <message><source>Name:</source><translation>Назва:</translation></message>
         <message><source>Total Size:</source><translation>Загальний розмір:</translation></message>
-        <message><source>Piece Length:</source><translation>Розмір частини:</translation></message>
-        <message><source>Pieces:</source><translation>Частини:</translation></message>
+        <message><source>Piece Length:</source><translation>Розмір шматку:</translation></message>
+        <message><source>Pieces:</source><translation>Шматки:</translation></message>
         <message><source>Private:</source><translation>Приватний:</translation></message>
         <message><source>Yes</source><translation>Так</translation></message>
         <message><source>No</source><translation>Ні</translation></message>

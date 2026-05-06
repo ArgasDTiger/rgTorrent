@@ -8,6 +8,7 @@
 #include <QMenu>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QStyle>
 
 class ProgressDelegate final : public QStyledItemDelegate {
 public:
@@ -198,7 +199,7 @@ void TorrentListWidget::rebuildTable() {
         m_table->setItem(row, COL_PROGRESS, progItem);
 
         auto *seedingItem = new QTableWidgetItem(
-            t.seeding ? tr("✓ Yes") : tr("No"));
+            t.seeding ? tr("Yes") : tr("No"));
         seedingItem->setForeground(t.seeding
                                        ? QColor("#66bb6a")
                                        : QColor("#6b7194"));
@@ -242,12 +243,13 @@ void TorrentListWidget::onCustomContextMenu(const QPoint &pos) {
     if (id == -1) return;
 
     QMenu menu(this);
-    const QAction *actResume = menu.addAction(tr("▶ Resume"));
-    const QAction *actPause = menu.addAction(tr("⏸ Pause"));
+
+    const QAction *actResume = menu.addAction(style()->standardIcon(QStyle::SP_MediaPlay), tr("Resume"));
+    const QAction *actPause = menu.addAction(style()->standardIcon(QStyle::SP_MediaPause), tr("Pause"));
     menu.addSeparator();
-    const QAction *actOpen = menu.addAction(tr("📁 Open Location"));
+    const QAction *actOpen = menu.addAction(style()->standardIcon(QStyle::SP_DirOpenIcon), tr("Open Location"));
     menu.addSeparator();
-    const QAction *actRemove = menu.addAction(tr("✕ Remove"));
+    const QAction *actRemove = menu.addAction(style()->standardIcon(QStyle::SP_TrashIcon), tr("Remove"));
 
     if (const QAction *chosen = menu.exec(m_table->viewport()->mapToGlobal(pos)); chosen == actResume) emit
         resumeRequested(id);

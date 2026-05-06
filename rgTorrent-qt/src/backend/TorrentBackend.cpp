@@ -12,8 +12,8 @@ extern "C" {
 
 static QString formatSize(const quint64 bytes) {
     if (bytes == 0) return QStringLiteral("—");
-    const double kb = 1024, mb = kb * 1024, gb = mb * 1024;
-    if (bytes >= gb) return QString("%1 GB").arg(bytes / gb, 0, 'f', 2);
+    const double kb = 1024, mb = kb * 1024;
+    if (const double gb = mb * 1024; bytes >= gb) return QString("%1 GB").arg(bytes / gb, 0, 'f', 2);
     if (bytes >= mb) return QString("%1 MB").arg(bytes / mb, 0, 'f', 1);
     if (bytes >= kb) return QString("%1 KB").arg(bytes / kb, 0, 'f', 0);
     return QString("%1 B").arg(bytes);

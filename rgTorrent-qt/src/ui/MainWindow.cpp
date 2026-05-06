@@ -19,6 +19,7 @@
 #include <QTranslator>
 #include <QApplication>
 #include <QSettings>
+#include <QStyle>
 
 MainWindow::MainWindow(TorrentBackend *backend, ThemeManager *theme, QWidget *parent)
     : QMainWindow(parent), m_backend(backend), m_theme(theme) {
@@ -146,15 +147,19 @@ void MainWindow::buildTopBar(QWidget *bar) {
 
     lay->addStretch();
 
-    m_addBtn = new QPushButton(tr("＋ Add"), bar);
+    m_addBtn = new QPushButton(tr("Add"), bar);
     m_addBtn->setObjectName("accentBtn");
+    m_addBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
 
-    m_removeBtn = new QPushButton(tr("✕ Remove"), bar);
+    m_removeBtn = new QPushButton(tr("Remove"), bar);
     m_removeBtn->setObjectName("dangerBtn");
+    m_removeBtn->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
 
-    m_createBtn = new QPushButton(tr("⚙ Create"), bar);
+    m_createBtn = new QPushButton(tr("Create"), bar);
+    m_createBtn->setIcon(style()->standardIcon(QStyle::SP_FileIcon));
 
-    m_contentBtn = new QPushButton(tr("🔍 Contents"), bar);
+    m_contentBtn = new QPushButton(tr("Contents"), bar);
+    m_contentBtn->setIcon(style()->standardIcon(QStyle::SP_DirIcon));
 
     for (auto *b: {m_addBtn, m_removeBtn, m_createBtn, m_contentBtn}) {
         b->setFixedHeight(32);
@@ -179,10 +184,10 @@ void MainWindow::buildTopBar(QWidget *bar) {
 void MainWindow::retranslateUi() {
     setWindowTitle(tr("rgTorrent"));
     m_searchEdit->setPlaceholderText(tr("Filter torrents…"));
-    m_addBtn->setText(tr("＋ Add"));
-    m_removeBtn->setText(tr("✕ Remove"));
-    m_createBtn->setText(tr("⚙ Create"));
-    m_contentBtn->setText(tr("🔍 Contents"));
+    m_addBtn->setText(tr("Add"));
+    m_removeBtn->setText(tr("Remove"));
+    m_createBtn->setText(tr("Create"));
+    m_contentBtn->setText(tr("Contents"));
     statusBar()->showMessage(tr("Ready"));
 }
 
@@ -206,11 +211,18 @@ void MainWindow::onRemoveTorrent() {
         statusBar()->showMessage(tr("No torrent selected."), 2000);
         return;
     }
-    const auto btn = QMessageBox::question(
-        this, tr("Remove torrent"),
-        tr("Remove the selected torrent from the list?"),
-        QMessageBox::Yes | QMessageBox::No);
-    if (btn != QMessageBox::Yes) return;
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(tr("Remove torrent"));
+    msgBox.setText(tr("Remove the selected torrent from the list?"));
+    msgBox.setIcon(QMessageBox::Question);
+
+    const QPushButton *yesBtn = msgBox.addButton(tr("Yes"), QMessageBox::YesRole);
+    msgBox.addButton(tr("No"), QMessageBox::NoRole);
+
+    msgBox.exec();
+
+    if (msgBox.clickedButton() != yesBtn) return;
 
     m_backend->removeTorrent(id);
     if (m_backend->torrents().isEmpty()) {
