@@ -121,8 +121,11 @@ void TorrentListWidget::setFilter(const QString &text) {
 int TorrentListWidget::selectedId() const {
     auto rows = m_table->selectionModel()->selectedRows();
     if (rows.isEmpty()) return -1;
-    return m_table->item(rows.first().row(), COL_NAME)
-            ->data(Qt::UserRole).toInt();
+
+    const QTableWidgetItem *item = m_table->item(rows.first().row(), COL_NAME);
+    if (!item) return -1;
+
+    return item->data(Qt::UserRole).toInt();
 }
 
 void TorrentListWidget::onSelectionChanged() {
@@ -148,6 +151,8 @@ void TorrentListWidget::rebuildTable() {
 
     m_table->setUpdatesEnabled(false);
     m_table->setSortingEnabled(false);
+
+    m_table->clearContents();
     m_table->setRowCount(m_filtered.size());
 
     const QString statusVerifying = QCoreApplication::translate("TorrentBackend", "Verifying");
@@ -269,6 +274,6 @@ void TorrentListWidget::onDoubleClicked(const int row, const int col) {
     }
 }
 
-void TorrentListWidget::clearSelection() {
+void TorrentListWidget::clearSelection() const {
     m_table->clearSelection();
 }

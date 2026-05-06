@@ -444,7 +444,7 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
 
             // TODO: probably only temp solution
             while (true) {
-                sleep(1);
+                usleep(100000);
                 pthread_mutex_lock(&e->lock);
                 current_status = e->status;
                 pthread_mutex_unlock(&e->lock);
@@ -457,7 +457,7 @@ void start_swarm(TorrentEntry *e, const unsigned char *peers_list, const size_t 
             continue;
         }
 
-        const int activity = poll(poll_fds, MAX_PEERS, 1000);
+        const int activity = poll(poll_fds, MAX_PEERS + 1, 100);
         if (activity < 0) break;
 
         int live_seeds = 0;
