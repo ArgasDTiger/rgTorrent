@@ -198,7 +198,7 @@ static bool handle_unchoke(TorrentEntry *e, const struct pollfd *pfd, PeerConnec
 
 static bool handle_downloading(TorrentEntry *e, const struct pollfd *pfd, PeerConnection *peer,
                                const unsigned char *pieces_hashes, const EndFile *end_files, const int num_files,
-                               struct pollfd *all_poll_fds, PeerConnection *all_peers) {
+                               const struct pollfd *all_poll_fds, const PeerConnection *all_peers) {
     uint32_t msg_len_net;
     const ssize_t res = recv(pfd->fd, &msg_len_net, 4, 0);
 

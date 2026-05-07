@@ -2,6 +2,7 @@
 #include <QWidget>
 #include "../backend/TorrentItem.h"
 
+class QPushButton;
 class QLabel;
 class QProgressBar;
 class QFrame;
@@ -13,6 +14,7 @@ public:
     void setTorrent(const TorrentItem &item) const;
     void clear();
     void retranslateUi() const;
+    void setIconColor(const QColor &color) const;
 
 signals:
     void closeRequested();
@@ -24,4 +26,5 @@ private:
            *m_lPeers, *m_lProgress, *m_lSeeding, *m_lPath;
     QProgressBar *m_progressBar;
     QFrame       *m_card;
+    QPushButton *m_closeBtn;
 };

@@ -1,14 +1,14 @@
 #include "TorrentListWidget.h"
+#include "IconUtils.h"
+
 #include <QVBoxLayout>
 #include <QHeaderView>
 #include <QStyledItemDelegate>
-#include <QPainter>
 #include <QStyleOptionProgressBar>
 #include <QApplication>
 #include <QMenu>
 #include <QDesktopServices>
 #include <QUrl>
-#include <QStyle>
 
 class ProgressDelegate final : public QStyledItemDelegate {
 public:
@@ -243,13 +243,13 @@ void TorrentListWidget::onCustomContextMenu(const QPoint &pos) {
     if (id == -1) return;
 
     QMenu menu(this);
-
-    const QAction *actResume = menu.addAction(style()->standardIcon(QStyle::SP_MediaPlay), tr("Resume"));
-    const QAction *actPause = menu.addAction(style()->standardIcon(QStyle::SP_MediaPause), tr("Pause"));
+    const QColor textColor = palette().windowText().color();
+    const QAction *actResume = menu.addAction(IconUtils::colorize(":/icons/play.svg", textColor), tr("Resume"));
+    const QAction *actPause  = menu.addAction(IconUtils::colorize(":/icons/pause.svg", textColor), tr("Pause"));
     menu.addSeparator();
-    const QAction *actOpen = menu.addAction(style()->standardIcon(QStyle::SP_DirOpenIcon), tr("Open Location"));
+    const QAction *actOpen   = menu.addAction(IconUtils::colorize(":/icons/folder.svg", textColor), tr("Open Location"));
     menu.addSeparator();
-    const QAction *actRemove = menu.addAction(style()->standardIcon(QStyle::SP_TrashIcon), tr("Remove"));
+    const QAction *actRemove = menu.addAction(IconUtils::colorize(":/icons/trash.svg", QColor("#ef5350")), tr("Remove"));
 
     if (const QAction *chosen = menu.exec(m_table->viewport()->mapToGlobal(pos)); chosen == actResume) emit
         resumeRequested(id);

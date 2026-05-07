@@ -1,11 +1,12 @@
-<RCC>
-    <!--
-        Translation .qm files are compiled from the .ts sources by CMake's
-        qt_add_translations() call and embedded automatically into the binary.
-        This file is reserved for other static resources (icons, etc.).
-        Add entries here as the project grows, e.g.:
-            <qresource prefix="/icons">
-                <file>icons/add.svg</file>
-            </qresource>
-    -->
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/add.svg</file>
+        <file>icons/trash.svg</file>
+        <file>icons/settings.svg</file>
+        <file>icons/search.svg</file>
+        <file>icons/play.svg</file>
+        <file>icons/pause.svg</file>
+        <file>icons/folder.svg</file>
+        <file>icons/minus.svg</file>
+    </qresource>
 </RCC>

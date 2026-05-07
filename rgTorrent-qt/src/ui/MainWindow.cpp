@@ -5,6 +5,7 @@
 #include "CreateTorrentDialog.h"
 #include "TorrentContentDialog.h"
 #include "../backend/TorrentBackend.h"
+#include "IconUtils.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -19,7 +20,9 @@
 #include <QTranslator>
 #include <QApplication>
 #include <QSettings>
-#include <QStyle>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
 
 MainWindow::MainWindow(TorrentBackend *backend, ThemeManager *theme, QWidget *parent)
     : QMainWindow(parent), m_backend(backend), m_theme(theme) {
@@ -31,7 +34,7 @@ MainWindow::MainWindow(TorrentBackend *backend, ThemeManager *theme, QWidget *pa
     if (const QString langCode = lang == 1 ? "uk" : "en"; m_translator->load(
         QString(":/i18n/rgTorrent_%1").arg(langCode))) {
         qApp->installTranslator(m_translator);
-    }
+        }
 
     buildUi();
     retranslateUi();
@@ -88,6 +91,9 @@ void MainWindow::buildUi() {
     m_listWidget = new TorrentListWidget(m_splitter);
     m_detailPanel = new TorrentDetailsPanel(m_splitter);
 
+    const QColor initialColor = (m_theme->currentTheme() == ThemeManager::Dark) ? QColor("#ffffff") : QColor("#2a2d44");
+    m_detailPanel->setIconColor(initialColor);
+
     m_splitter->addWidget(m_listWidget);
     m_splitter->addWidget(m_detailPanel);
     m_splitter->setStretchFactor(0, 3);
@@ -101,29 +107,27 @@ void MainWindow::buildUi() {
     connect(m_listWidget, &TorrentListWidget::selectionChanged,
             this, [this](const TorrentItem &item) {
                 m_detailPanel->setTorrent(item);
-
-                if (m_detailPanel->isHidden()) {
-                    m_detailPanel->show();
-                }
+                if (m_detailPanel->isHidden()) m_detailPanel->show();
             });
     connect(m_listWidget, &TorrentListWidget::pauseRequested, m_backend, &TorrentBackend::pauseTorrent);
     connect(m_listWidget, &TorrentListWidget::resumeRequested, m_backend, &TorrentBackend::resumeTorrent);
     connect(m_listWidget, &TorrentListWidget::removeRequested, this, &MainWindow::onRemoveTorrent);
-
-    connect(m_searchEdit, &QLineEdit::textChanged,
-            m_listWidget, &TorrentListWidget::setFilter);
-
+    connect(m_searchEdit, &QLineEdit::textChanged, m_listWidget, &TorrentListWidget::setFilter);
     connect(m_addBtn, &QPushButton::clicked, this, &MainWindow::onAddTorrent);
     connect(m_removeBtn, &QPushButton::clicked, this, &MainWindow::onRemoveTorrent);
     connect(m_createBtn, &QPushButton::clicked, this, &MainWindow::onCreateTorrent);
     connect(m_contentBtn, &QPushButton::clicked, this, &MainWindow::onShowContent);
     connect(m_themeBtn, &QPushButton::clicked, this, &MainWindow::onThemeToggled);
-
-    connect(m_langCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onLanguageChanged);
-
-    connect(m_theme, &ThemeManager::themeChanged, this, [this](ThemeManager::Theme t) {
+    connect(m_langCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onLanguageChanged);
+    connect(m_theme, &ThemeManager::themeChanged, this, [this](const ThemeManager::Theme t) {
         m_themeBtn->setText(t == ThemeManager::Dark ? "☀" : "🌑");
+
+        const QColor newColor = (t == ThemeManager::Dark) ? QColor("#ffffff") : QColor("#2a2d44");
+        m_addBtn->setIcon(IconUtils::colorize(":/icons/add.svg", newColor));
+        m_createBtn->setIcon(IconUtils::colorize(":/icons/settings.svg", newColor));
+        m_contentBtn->setIcon(IconUtils::colorize(":/icons/search.svg", newColor));
+
+        m_detailPanel->setIconColor(newColor);
     });
     m_themeBtn->setText("☀");
 }
@@ -147,19 +151,23 @@ void MainWindow::buildTopBar(QWidget *bar) {
 
     lay->addStretch();
 
+    QColor iconColor = (m_theme->currentTheme() == ThemeManager::Dark)
+                       ? QColor("#ffffff")
+                       : QColor("#2a2d44");
+
     m_addBtn = new QPushButton(tr("Add"), bar);
     m_addBtn->setObjectName("accentBtn");
-    m_addBtn->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    m_addBtn->setIcon(IconUtils::colorize(":/icons/add.svg", iconColor));
 
     m_removeBtn = new QPushButton(tr("Remove"), bar);
     m_removeBtn->setObjectName("dangerBtn");
-    m_removeBtn->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    m_removeBtn->setIcon(IconUtils::colorize(":/icons/trash.svg", QColor("#ef5350")));
 
     m_createBtn = new QPushButton(tr("Create"), bar);
-    m_createBtn->setIcon(style()->standardIcon(QStyle::SP_FileIcon));
+    m_createBtn->setIcon(IconUtils::colorize(":/icons/settings.svg", iconColor));
 
     m_contentBtn = new QPushButton(tr("Contents"), bar);
-    m_contentBtn->setIcon(style()->standardIcon(QStyle::SP_DirIcon));
+    m_contentBtn->setIcon(IconUtils::colorize(":/icons/search.svg", iconColor));
 
     for (auto *b: {m_addBtn, m_removeBtn, m_createBtn, m_contentBtn}) {
         b->setFixedHeight(32);

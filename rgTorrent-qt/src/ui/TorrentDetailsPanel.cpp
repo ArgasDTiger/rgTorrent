@@ -1,4 +1,6 @@
 #include "TorrentDetailsPanel.h"
+#include "IconUtils.h"
+
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QLabel>
@@ -34,15 +36,14 @@ TorrentDetailsPanel::TorrentDetailsPanel(QWidget *parent)
 
     headerLay->addStretch();
 
-    auto *closeBtn = new QPushButton("✕", content);
-    closeBtn->setFixedSize(24, 24);
-    closeBtn->setFlat(true);
-    closeBtn->setCursor(Qt::PointingHandCursor);
-    headerLay->addWidget(closeBtn);
+    m_closeBtn = new QPushButton(content);
+    m_closeBtn->setFixedSize(24, 24);
+    m_closeBtn->setFlat(true);
+    m_closeBtn->setCursor(Qt::PointingHandCursor);
 
+    headerLay->addWidget(m_closeBtn);
     vlay->addLayout(headerLay);
-
-    connect(closeBtn, &QPushButton::clicked, this, &TorrentDetailsPanel::closeRequested);
+    connect(m_closeBtn, &QPushButton::clicked, this, &TorrentDetailsPanel::closeRequested);
 
     m_card = new QFrame(content);
     m_card->setFrameShape(QFrame::StyledPanel);
@@ -142,4 +143,8 @@ void TorrentDetailsPanel::retranslateUi() const {
     if (const auto k5 = findChild<QLabel*>("key_5")) k5->setText(tr("Seeding"));
     if (const auto k6 = findChild<QLabel*>("key_6")) k6->setText(tr("File"));
     if (const auto kp = findChild<QLabel*>("detailKey")) kp->setText(tr("Progress"));
+}
+
+void TorrentDetailsPanel::setIconColor(const QColor &color) const {
+    m_closeBtn->setIcon(IconUtils::colorize(":/icons/minus.svg", color));
 }
